@@ -4,6 +4,7 @@ needs:
   packages:
     - ${{inputs.sdk-package}}
     - build-base
+    - libssl3
 
 inputs:
   sdk-package:

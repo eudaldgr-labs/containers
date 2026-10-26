@@ -1,7 +1,7 @@
 package:
   name: openssl-static
   version: 3.6.2 # renovate: datasource=github-tags depName=openssl/openssl
-  epoch: 1
+  epoch: 2
   description: OpenSSL static libraries
   copyright:
     - license: Apache-2.0
@@ -14,7 +14,7 @@ environment:
       - &wolfi-keyring https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
     packages:
       - busybox
-      - openssl-dev
+      - openssl-dev~3.6
 
 pipeline:
   - name: Repack Wolfi OpenSSL development files
@@ -71,6 +71,7 @@ test:
         test -f /usr/lib/pkgconfig/libssl.pc || test -f /usr/lib/pkgconfig/openssl.pc
         test -f /usr/lib/cmake/OpenSSL/OpenSSLConfig.cmake
         pkgconf --exists libcrypto libssl openssl
+        pkgconf --modversion openssl | grep -q '^3\.6\.'
         ! pkgconf --static --libs libcrypto | grep -q jitterentropy
         ! grep -q jitterentropy /usr/lib/cmake/OpenSSL/OpenSSLConfig.cmake
         cat > /tmp/openssl-link.c <<'EOF'
