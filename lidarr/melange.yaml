@@ -1,7 +1,7 @@
 package:
   name: lidarr
-  version: 3.1.0.4875 # renovate: datasource=github-releases depName=Lidarr/Lidarr
-  epoch: 1
+  version: 3.1.6.5079 # renovate: datasource=github-releases depName=Lidarr/Lidarr
+  epoch: 0
   description: Looks and smells like Sonarr but made for music
   copyright:
     - license: GPL-3.0
