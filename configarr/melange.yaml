@@ -1,7 +1,7 @@
 package:
   name: configarr
-  version: 1.38.0 # renovate: datasource=github-releases depName=raydak-labs/configarr
-  epoch: 1
+  version: 1.39.1 # renovate: datasource=github-releases depName=raydak-labs/configarr
+  epoch: 0
   description: Sync TRaSH-Guides Custom Formats to Sonarr/Radarr
   copyright:
     - license: AGPL-3.0
