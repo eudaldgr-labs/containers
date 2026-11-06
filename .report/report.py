@@ -4,6 +4,7 @@ import html
 import json
 import os
 import shutil
+import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -11,6 +12,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 reports = sorted(glob.glob(os.path.join(PROJECT_ROOT, "reports/**/cve-report-*-*.json"), recursive=True))
 
 apps = {}
+invalid_reports = []
 for rpath in reports:
     filename = os.path.basename(rpath)
     # Expected format: cve-report-NAME-ARCH.json
@@ -22,9 +24,12 @@ for rpath in reports:
         name = filename.replace("cve-report-", "").replace(".json", "")
         arch = "unknown"
 
+    app = None
     try:
         with open(rpath) as f:
             data = json.load(f)
+        if not isinstance(data.get("matches"), list):
+            raise ValueError("Missing Grype matches array")
         vegops = data.get("vegops", {})
         source_image = vegops.get("sourceImage", name)
         repository = vegops.get("repository", source_image)
@@ -70,8 +75,24 @@ for rpath in reports:
                         "archs": set()
                     }
                 app["vulns"][key]["archs"].add(arch)
-    except Exception:
-        pass
+    except (ValueError, TypeError, KeyError, AttributeError, OSError) as error:
+        if app is not None:
+            app["archs"].discard(arch)
+        invalid_reports.append(filename)
+        print(f"Invalid report {filename}: {error}", file=sys.stderr)
+
+scanned_count = len(apps)
+expected_archs = {"x86_64", "aarch64"}
+scanned_sources = set().union(*(app["source_images"] for app in apps.values()))
+expected_sources = {os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(PROJECT_ROOT, "*/apko.yaml"))}
+for source in sorted(expected_sources - scanned_sources):
+    apps[f"missing:{source}"] = {
+        "source_images": {source}, "repository": source, "release_tag": None,
+        "stream_tag": None, "published_tags": set(), "archs": set(), "vulns": {},
+    }
+incomplete_count = sum(app["archs"] != expected_archs for app in apps.values())
+build_url = os.environ.get("BUILD_URL", "https://github.com/eudaldgr-labs/containers/actions/workflows/build.yaml")
+build_conclusion = os.environ.get("BUILD_CONCLUSION", "local preview")
 
 severity_order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Negligible": 4, "Unknown": 5}
 now = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC")
@@ -83,7 +104,7 @@ for app in apps.values():
         sev = v["severity"]
         if sev in total:
             total[sev] += 1
-clean_count = sum(1 for app in apps.values() if not app["vulns"])
+clean_count = sum(1 for app in apps.values() if not app["vulns"] and app["archs"] == expected_archs)
 
 # Read CSS
 with open(os.path.join(SCRIPT_DIR, "style.css")) as f:
@@ -93,14 +114,13 @@ THEME_BOOTSTRAP_FILE = "theme-bootstrap.js"
 THEME_TOGGLE_FILE = "theme-toggle.js"
 
 SUN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.75v2.5M12 18.75v2.5M21.25 12h-2.5M5.25 12h-2.5M18.54 5.46l-1.77 1.77M7.23 16.77l-1.77 1.77M18.54 18.54l-1.77-1.77M7.23 7.23L5.46 5.46"></path></svg>'
-MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3c-.17.57-.26 1.18-.26 1.8A7 7 0 0 0 19.2 13c.62 0 1.23-.09 1.8-.21Z"></path></svg>'
 
 page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VegOps CVE Dashboard</title>
+  <title>VegOps — Container security</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="{THEME_BOOTSTRAP_FILE}"></script>
@@ -108,33 +128,51 @@ page = f"""<!DOCTYPE html>
 {css}
   </style>
   <script src="{THEME_TOGGLE_FILE}" defer></script>
+  <script src="catalog.js" defer></script>
 </head>
 <body>
-  <div class="container">
+  <nav class="topbar" aria-label="Main navigation">
+    <a class="brand" href="./"><img src="favicon.png" alt="" class="logo">vegops<span>/ containers</span></a>
+    <a href="https://github.com/eudaldgr-labs/containers">Source ↗</a>
+  </nav>
+  <main class="container">
     <header>
       <div class="header-row">
         <div class="header-copy">
-          <h1><img src="favicon.png" alt="" class="logo">VegOps Security Dashboard</h1>
+          <p class="eyebrow">REGISTRY / SECURITY</p>
+          <h1>Container security.</h1>
+          <p class="intro">Vulnerability reports for the VegOps image collection.</p>
           <p class="status-line">
-            <span class="prompt">$</span> scanned {len(apps)} releases <span class="status-sep">|</span> {now}
+            {scanned_count} scanned releases · Generated {now}
           </p>
         </div>
         <button type="button" class="theme-toggle" id="theme-toggle">
           <span class="theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true">{SUN_ICON}</span>
-          <span class="theme-toggle__track" aria-hidden="true"><span class="theme-toggle__thumb"></span></span>
-          <span class="theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true">{MOON_ICON}</span>
           <span class="theme-toggle__label" data-theme-label>Auto</span>
         </button>
       </div>
     </header>
 """
 
-page += '<div class="summary-bar">'
+page += f'<p class="run-status">Build: <a href="{html.escape(build_url, quote=True)}">{html.escape(build_conclusion)} ↗</a> · {incomplete_count} images with incomplete scan coverage</p>'
+if invalid_reports:
+    page += f'<p class="notice" role="status">{len(invalid_reports)} invalid reports could not be read. Coverage may be incomplete.</p>'
+page += '<div class="summary-bar" aria-label="Vulnerability totals">'
 for sev, count in total.items():
     cls = sev.lower()
-    page += f'<div class="stat-segment stat-segment--{cls}"><span class="stat-label">{sev}</span><span class="stat-count stat-count--{cls}">{count}</span></div>'
-page += f'<div class="stat-segment stat-segment--clean"><span class="stat-label">Clean</span><span class="stat-count stat-count--clean">{clean_count}</span></div>'
+    page += f'<div class="stat-segment stat-segment--{cls}"><span class="stat-label">{html.escape(sev)}</span><span class="stat-count stat-count--{cls}">{count}</span></div>'
+page += f'<div class="stat-segment stat-segment--clean"><span class="stat-label">No known CVEs</span><span class="stat-count stat-count--clean">{clean_count}</span></div>'
 page += "</div>"
+page += '''<section aria-labelledby="catalog-title">
+<div class="catalog-toolbar"><h2 id="catalog-title">Image catalog</h2>
+<div class="filters"><label for="search">Search images</label><input id="search" type="search" placeholder="Search name, tag or package…">
+<label for="status-filter" class="sr-only">Scan status</label><select id="status-filter">
+<option value="all">All statuses</option><option value="issues">With CVEs</option>
+<option value="clean">No known CVEs</option><option value="incomplete">Incomplete scans</option></select></div></div>
+<p class="catalog-note">Reports describe scanned builds; tags shown are intended publish tags, not confirmation of publication.</p>
+<p id="result-count" class="sr-only" role="status" aria-live="polite"></p>
+<p id="empty-state" hidden>No images match your filters.</p>
+'''
 
 
 def app_sort_key(item):
@@ -189,7 +227,7 @@ card_index = 0
 for _, app in sorted(apps.items(), key=app_sort_key):
     vulns = list(app["vulns"].values())
     has_issues = len(vulns) > 0
-    clean_class = "" if has_issues else " image-section--clean"
+    complete = app["archs"] == expected_archs
 
     # Build display name with optional stream integration
     repo = app["repository"]
@@ -224,11 +262,14 @@ for _, app in sorted(apps.items(), key=app_sort_key):
         meta_html = '<div class="image-meta-row">' + "".join(meta_parts) + "</div>"
 
     # Status badge
-    if has_issues:
-        status_text = f"{len(vulns)} Issues"
+    if not complete:
+        known = f" · {len(vulns)} CVEs" if has_issues else ""
+        status_badge = f'<div class="status-badge incomplete">Incomplete scan{known}</div>'
+    elif has_issues:
+        status_text = f"{len(vulns)} CVEs"
         status_badge = f'<div class="status-badge has-issues"><div class="status-dot"></div>{status_text}</div>'
     else:
-        status_badge = f'<div class="status-badge">{CLEAN_CHECK} Clean</div>'
+        status_badge = f'<div class="status-badge">{CLEAN_CHECK} No known CVEs</div>'
 
     toggle = TOGGLE_CHEVRON if has_issues else TOGGLE_SPACER
 
@@ -244,8 +285,12 @@ for _, app in sorted(apps.items(), key=app_sort_key):
       {status_badge}
     '''
 
-    delay_ms = card_index * 25
-    page += f'<div class="image-section{clean_class}" style="animation-delay:{delay_ms}ms">'
+    delay_ms = min(card_index, 8) * 25
+    status = "issues" if has_issues else ("clean" if complete else "")
+    if not complete:
+        status = (status + " incomplete").strip()
+    search_text = " ".join([repo, *source_set, *app["published_tags"], *(v["package"] for v in vulns)])
+    page += f'<div class="image-section" data-status="{status}" data-search="{html.escape(search_text.lower(), quote=True)}" style="animation-delay:{delay_ms}ms">'
     card_index += 1
 
     if vulns:
@@ -276,7 +321,7 @@ for _, app in sorted(apps.items(), key=app_sort_key):
 
             fixed_parts = v["fixed"]
             if fixed_parts:
-                fixed_html = f'<span class="fixed-in">{", ".join(fixed_parts)}</span>'
+                fixed_html = f'<span class="fixed-in">{html.escape(", ".join(fixed_parts))}</span>'
             else:
                 fixed_html = '<span class="fixed-in fixed-in--unpatched">Unpatched</span>'
 
@@ -294,7 +339,7 @@ for _, app in sorted(apps.items(), key=app_sort_key):
             page += f'''
               <tr class="sev-{sev_cls}">
                 <td data-label="CVE ID" class="cve-id">{html.escape(v["id"])}</td>
-                <td data-label="Severity"><span class="sev-dot sev-dot--{sev_cls}"></span><span class="sev-text sev-text--{sev_cls}">{sev}</span></td>
+                <td data-label="Severity"><span class="sev-dot sev-dot--{sev_cls}"></span><span class="sev-text sev-text--{sev_cls}">{html.escape(sev)}</span></td>
                 <td data-label="Package" class="package-name">{html.escape(v["package"])}</td>
                 <td data-label="Arch">{arch_chips}</td>
                 <td data-label="Fixed Version">{fixed_html}</td>
@@ -310,7 +355,7 @@ for _, app in sorted(apps.items(), key=app_sort_key):
     '''
     page += "</div>"
 
-page += "</div></body></html>"
+page += '</section><footer><span>VegOps · Built with Wolfi, Melange &amp; Apko</span><a href="https://github.com/eudaldgr-labs/containers">Browse recipes ↗</a></footer></main></body></html>'
 
 site_dir = os.path.join(PROJECT_ROOT, "site")
 os.makedirs(site_dir, exist_ok=True)
@@ -318,7 +363,7 @@ os.makedirs(site_dir, exist_ok=True)
 with open(os.path.join(site_dir, "index.html"), "w") as f:
     f.write(page)
 
-for asset in (THEME_BOOTSTRAP_FILE, THEME_TOGGLE_FILE):
+for asset in (THEME_BOOTSTRAP_FILE, THEME_TOGGLE_FILE, "catalog.js"):
     shutil.copy(os.path.join(SCRIPT_DIR, asset), os.path.join(site_dir, asset))
 
 # Copy favicon
