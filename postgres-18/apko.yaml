@@ -91,6 +91,8 @@ accounts:
 entrypoint:
   command: /usr/bin/postgres
 
+cmd: -k /postgres/run
+
 work-dir: /
 
 environment:

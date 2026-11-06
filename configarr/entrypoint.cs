@@ -163,6 +163,8 @@ sealed class CronSchedule
     private readonly bool[] _days;
     private readonly bool[] _months;
     private readonly bool[] _weekdays;
+    private readonly bool _anyDay;
+    private readonly bool _anyWeekday;
 
     public CronSchedule(string expression)
     {
@@ -174,17 +176,24 @@ sealed class CronSchedule
         _hours = Parse(fields[1], 0, 23);
         _days = Parse(fields[2], 1, 31);
         _months = Parse(fields[3], 1, 12);
-        _weekdays = Parse(fields[4].Replace("7", "0", StringComparison.Ordinal), 0, 6);
+        _weekdays = Parse(fields[4], 0, 7);
+        _weekdays[0] |= _weekdays[7];
+        _anyDay = fields[2].StartsWith('*');
+        _anyWeekday = fields[4].StartsWith('*');
     }
 
     public DateTimeOffset Next(DateTimeOffset from)
     {
+        from = from.ToUniversalTime();
         var next = new DateTimeOffset(from.Year, from.Month, from.Day, from.Hour, from.Minute, 0, TimeSpan.Zero)
             .AddMinutes(1);
 
         for (var i = 0; i < 366 * 5 * 24 * 60; i++)
         {
-            if (_months[next.Month] && _days[next.Day] && _weekdays[(int)next.DayOfWeek] &&
+            var dayMatches = _anyDay || _anyWeekday
+                ? _days[next.Day] && _weekdays[(int)next.DayOfWeek]
+                : _days[next.Day] || _weekdays[(int)next.DayOfWeek];
+            if (_months[next.Month] && dayMatches &&
                 _hours[next.Hour] && _minutes[next.Minute])
                 return next;
 
@@ -206,6 +215,8 @@ sealed class CronSchedule
                 throw new Exception($"invalid cron step: {part}");
 
             var (start, end) = Bounds(range, min, max);
+            if (slash >= 0 && range != "*" && !range.Contains('-'))
+                end = max;
             for (var value = start; value <= end; value += step)
                 values[value] = true;
         }
