@@ -60,8 +60,8 @@ paths:
 annotations:
   org.opencontainers.image.title: "dotnet"
   org.opencontainers.image.description: "Hardened .NET Runtime image built on Wolfi with daily CVE patches"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/dotnet-10"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/dotnet-10"
   org.opencontainers.image.licenses: "Apache-2.0"
 
 archs:

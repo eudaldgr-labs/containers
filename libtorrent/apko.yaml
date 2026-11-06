@@ -19,8 +19,8 @@ accounts:
 annotations:
   org.opencontainers.image.title: "libtorrent"
   org.opencontainers.image.description: "Hardened libtorrent-rasterbar static library built on Wolfi"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/libtorrent"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/libtorrent"
   org.opencontainers.image.licenses: "BSD-1-Clause"
 
 archs:

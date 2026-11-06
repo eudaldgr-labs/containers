@@ -126,8 +126,8 @@ paths:
 annotations:
   org.opencontainers.image.title: "postgres"
   org.opencontainers.image.description: "Hardened PostgreSQL image built on Wolfi with daily CVE patches"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/postgres-18"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/postgres-18"
   org.opencontainers.image.licenses: "Apache-2.0"
 
 archs:

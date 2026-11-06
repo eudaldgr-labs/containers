@@ -64,8 +64,8 @@ paths:
 annotations:
   org.opencontainers.image.title: "configarr"
   org.opencontainers.image.description: "Hardened configarr image built on Wolfi with daily CVE patches"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/configarr"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/configarr"
   org.opencontainers.image.licenses: "AGPL-3.0"
 
 archs:

@@ -54,8 +54,8 @@ paths:
 annotations:
   org.opencontainers.image.title: "ghost"
   org.opencontainers.image.description: "Hardened Ghost image built on Wolfi with daily CVE patches"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/ghost"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/ghost"
   org.opencontainers.image.licenses: "MIT"
 
 archs:

@@ -14,8 +14,8 @@ entrypoint:
 annotations:
   org.opencontainers.image.title: "chown"
   org.opencontainers.image.description: "Minimal chown for distroless containers built on Alpine"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/chown"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/chown"
   org.opencontainers.image.licenses: "MIT"
 
 archs:

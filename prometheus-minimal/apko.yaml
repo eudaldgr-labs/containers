@@ -53,8 +53,8 @@ paths:
 annotations:
   org.opencontainers.image.title: "prometheus-minimal"
   org.opencontainers.image.description: "Hardened Minimal Prometheus monitoring server image built on Wolfi with daily CVE patches"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/prometheus-minimal"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/prometheus-minimal"
   org.opencontainers.image.licenses: "Apache-2.0"
 
 archs:

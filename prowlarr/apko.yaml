@@ -63,8 +63,8 @@ paths:
 annotations:
   org.opencontainers.image.title: "prowlarr"
   org.opencontainers.image.description: "Hardened Prowlarr image built on Wolfi with daily CVE patches"
-  org.opencontainers.image.url: "https://github.com/vegops/containers"
-  org.opencontainers.image.source: "https://github.com/vegops/containers/tree/main/prowlarr"
+  org.opencontainers.image.url: "https://github.com/eudaldgr-labs/containers"
+  org.opencontainers.image.source: "https://github.com/eudaldgr-labs/containers/tree/main/prowlarr"
   org.opencontainers.image.licenses: "GPL-3.0"
 
 archs:
