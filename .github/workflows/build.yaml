@@ -193,12 +193,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install melange
-        uses: chainguard-dev/actions/setup-melange@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
+        uses: chainguard-dev/actions/setup-melange@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
         with:
           version: ${{ env.MELANGE_VERSION }}
 
       - name: Generate ephemeral signing key
-        uses: chainguard-dev/actions/melange-keygen@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
+        uses: chainguard-dev/actions/melange-keygen@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
         with:
           signing-key-path: ${{ github.workspace }}/melange.rsa
 
@@ -467,15 +467,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install melange
-        uses: chainguard-dev/actions/setup-melange@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
+        uses: chainguard-dev/actions/setup-melange@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
         with:
           version: ${{ env.MELANGE_VERSION }}
 
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
@@ -526,7 +526,7 @@ jobs:
         run: rm -f sbom-*.spdx.json
 
       - name: Build image tarball (x86_64)
-        uses: chainguard-images/actions/apko-build@8e701b320e7efcb120a1115de26e9fe833f86390 # v1.0.38
+        uses: chainguard-images/actions/apko-build@f3fe6194c29f66abe278166e718bb3ef20754a71 # v1.0.39
         with:
           apko-image: ${{ env.APKO_IMAGE }}
           config: ${{ matrix.name }}/apko.yaml
@@ -554,7 +554,7 @@ jobs:
         run: rm -f sbom-*.spdx.json
 
       - name: Build image tarball (aarch64)
-        uses: chainguard-images/actions/apko-build@8e701b320e7efcb120a1115de26e9fe833f86390 # v1.0.38
+        uses: chainguard-images/actions/apko-build@f3fe6194c29f66abe278166e718bb3ef20754a71 # v1.0.39
         with:
           apko-image: ${{ env.APKO_IMAGE }}
           config: ${{ matrix.name }}/apko.yaml
@@ -714,7 +714,7 @@ jobs:
       - name: Publish multi-arch image
         if: github.event_name != 'pull_request'
         id: publish
-        uses: chainguard-images/actions/apko-publish@8e701b320e7efcb120a1115de26e9fe833f86390 # v1.0.38
+        uses: chainguard-images/actions/apko-publish@f3fe6194c29f66abe278166e718bb3ef20754a71 # v1.0.39
         with:
           apko-image: ${{ env.APKO_IMAGE }}
           config: ${{ matrix.name }}/apko.yaml
