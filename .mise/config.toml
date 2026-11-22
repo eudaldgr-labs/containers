@@ -6,6 +6,7 @@ lefthook = "2.2.2"
 python = "3.14.10"
 shellcheck = "0.11.0"
 trivy = "0.76.1"
+yq = "4.54.3"
 zizmor = "1.32.0"
 
 [env]
@@ -13,6 +14,15 @@ zizmor = "1.32.0"
 APKO_IMAGE = "ghcr.io/wolfi-dev/sdk:latest@sha256:71c60c596fd1414e0a765ac3980b757370da83ab1573a6d34a0e2ce991efd754"
 # renovate: datasource=docker depName=cgr.dev/chainguard/melange
 MELANGE_IMAGE = "cgr.dev/chainguard/melange:latest@sha256:931992bba27efcf8142f76e0f62759fbafdc13d6eef7bf9b43ce507dcb4193dd"
+
+# Appends one app/<name> label per apps/<name> to .github/labeler.yaml (Labeler workflow).
+[tasks.generate-label-config]
+hide = true
+run = '''
+find "{{config_root}}/apps" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | while IFS= read -r app; do
+    yq -i ". += {\"app/$app\": [{\"changed-files\": [{\"any-glob-to-any-file\": [\"apps/$app/**\"]}]}]}" {{config_root}}/.github/labeler.yaml
+done
+'''
 
 [hooks]
 postinstall = "lefthook install"

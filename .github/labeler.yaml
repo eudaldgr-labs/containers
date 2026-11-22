@@ -1,0 +1,33 @@
+---
+area/apps:
+  - changed-files:
+      - any-glob-to-any-file:
+          - apps/**/*
+          - include/**/*
+area/docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**/*
+          - "**/*.md"
+area/github:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**/*
+area/mise:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .mise/**/*
+area/pipelines:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .pipelines/**/*
+area/renovate:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .renovate/**/*
+          - .renovaterc.json5
+area/scripts:
+  - changed-files:
+      - any-glob-to-any-file:
+          - scripts/**/*
+          - .justfile

@@ -389,6 +389,8 @@ jobs:
   # SUMMARY                                                                    #
   ##############################################################################
   summary:
+    # Required by the `main` ruleset (eudaldgr-labs/.github safe-settings).
+    name: Build Success
     needs:
       [
         discover,

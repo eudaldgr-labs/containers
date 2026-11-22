@@ -5,6 +5,8 @@ rules:
       # Runs only for completed main-branch builds of this repository (see the job guard),
       # and only reads their scan artifacts; no code from the triggering run is executed.
       - cve-report.yaml
+      # Checks out the base branch only and runs no pull request code; it just applies labels.
+      - labeler.yaml
   self-repository:
     # `./.github/actions/...` is what actionlint understands; keep it until both support `$/`.
     disable: true
