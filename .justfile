@@ -163,7 +163,7 @@ report:
     "$PYTHON" .report/report.py
 
 clean:
-    rm -rf "$PACKAGES_DIR" "$OUT_DIR" .artifacts
+    rm -rf "$PACKAGES_DIR" "$OUT_DIR"
     rm -f sbom-*.spdx.json
 
 clean-images arch=env('ARCH', 'aarch64'):

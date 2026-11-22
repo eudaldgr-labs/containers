@@ -156,7 +156,7 @@ def download(root, name, kind, arch):
 
 def stage(root, name, arch):
     _, providers = catalog(root)
-    destination = root / '.artifacts' / 'packages' / arch
+    destination = root / 'out' / 'artifacts' / 'packages' / arch
     destination.mkdir(parents=True, exist_ok=True)
     for owner, filename in providers.values():
         if owner == name:

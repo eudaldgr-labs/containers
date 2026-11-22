@@ -28,7 +28,7 @@ def run(*args):
 
 
 def candidate(name, arch):
-    return Path('.artifacts') / f'release-{name}-{arch}.json'
+    return Path('out/artifacts') / f'release-{name}-{arch}.json'
 
 
 def prepare(name, arch):
@@ -58,7 +58,7 @@ def prepare(name, arch):
     result = dict(sourceImage=name, repository=repository, releaseTag=release, arch=arch,
                   publishedTags=aliases, streamTag=stream, sourceCommit=os.environ.get('GITHUB_SHA'),
                   buildRun=os.environ.get('GITHUB_RUN_ID'), buildAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'))
-    candidate(name, arch).parent.mkdir(exist_ok=True)
+    candidate(name, arch).parent.mkdir(parents=True, exist_ok=True)
     candidate(name, arch).write_text(json.dumps(result))
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         output.write(f'repository={repository}\n')
@@ -128,7 +128,7 @@ def publish(name):
                 raise ValueError(f'Immutable tag already points to another digest: {immutable}')
     for alias in sorted(release['publishedTags'], key=lambda tag: tag == 'latest'):
         run('docker', 'buildx', 'imagetools', 'create', '--tag', f'{repository}:{alias}', reference)
-    Path(f'.artifacts/published-{name}.json').write_text(json.dumps(dict(release, imageRef=reference)))
+    Path(f'out/artifacts/published-{name}.json').write_text(json.dumps(dict(release, imageRef=reference)))
 
 
 if __name__ == '__main__':
