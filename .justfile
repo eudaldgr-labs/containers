@@ -38,7 +38,7 @@ fmt:
     mise fmt
 
 list:
-    find . -mindepth 2 -maxdepth 2 \( -name melange.yaml -o -name apko.yaml \) -print | cut -d/ -f2 | sort -u
+    find apps -mindepth 2 -maxdepth 2 \( -name melange.yaml -o -name apko.yaml \) -print | cut -d/ -f2 | sort -u
 
 keygen:
     if [[ -f "$SIGNING_KEY" && -f "$KEYRING" ]]; then exit 0; fi
@@ -57,12 +57,12 @@ melange name='all' arch=env('ARCH', 'aarch64'):
       for package in $packages; do just melange "$package" "$2"; done
       exit 0
     fi
-    [[ -f "$1/melange.yaml" ]] || { echo "Unknown Melange package: $1" >&2; exit 1; }
+    [[ -f "apps/$1/melange.yaml" ]] || { echo "Unknown Melange package: $1" >&2; exit 1; }
     just keygen
     mkdir -p "$PACKAGES_DIR"
     "$PYTHON" -m scripts.packages "$1" melange "$2"
     pins=$("$PYTHON" -m scripts.packages pins "$1" melange)
-    just _melange build "$1/melange.yaml" --arch "$2" $pins --source-dir "$1" \
+    just _melange build "apps/$1/melange.yaml" --arch "$2" $pins --source-dir "apps/$1" \
       --signing-key "/work/$SIGNING_KEY" --repository-append "/work/$PACKAGES_DIR" \
       --keyring-append "/work/$KEYRING" --pipeline-dir /work/.pipelines --out-dir "/work/$PACKAGES_DIR"
     just index "$2"
@@ -92,10 +92,10 @@ index arch=env('ARCH', 'aarch64'):
 
 # Test an existing APK in Melange's isolated test environment.
 melangecheck name arch=env('ARCH', 'aarch64'):
-    [[ -f "$1/melange.yaml" ]] || { echo "Unknown Melange package: $1" >&2; exit 1; }
+    [[ -f "apps/$1/melange.yaml" ]] || { echo "Unknown Melange package: $1" >&2; exit 1; }
     just keygen
     pins=$("$PYTHON" -m scripts.packages pins "$1" test)
-    just _melange test "$1/melange.yaml" --arch "$2" $pins \
+    just _melange test "apps/$1/melange.yaml" --arch "$2" $pins \
       --repository-append "/work/$PACKAGES_DIR" --keyring-append "/work/$KEYRING" --pipeline-dirs /work/.pipelines
 
 # Build and test APKs in dependency order.
@@ -114,7 +114,7 @@ build name='all' arch=env('ARCH', 'aarch64'):
       just melangecheck "$package" "$2"
     done
     if [[ "$1" == all ]]; then
-      for config in */apko.yaml; do just apko "${config%/*}" "$2"; done
+      for config in apps/*/apko.yaml; do name=${config%/*}; just apko "${name#apps/}" "$2"; done
     else
       just apko "$1" "$2"
     fi
@@ -122,10 +122,10 @@ build name='all' arch=env('ARCH', 'aarch64'):
 # Assemble from existing APKs, retaining the exact archive and SBOM.
 apko name='all' arch=env('ARCH', 'aarch64'):
     if [[ "$1" == all ]]; then
-      for config in */apko.yaml; do just apko "${config%/*}" "$2"; done
+      for config in apps/*/apko.yaml; do name=${config%/*}; just apko "${name#apps/}" "$2"; done
       exit 0
     fi
-    [[ -f "$1/apko.yaml" ]] || { echo "Unknown Apko package: $1" >&2; exit 1; }
+    [[ -f "apps/$1/apko.yaml" ]] || { echo "Unknown Apko package: $1" >&2; exit 1; }
     case "$2" in aarch64) docker_arch=arm64 ;; x86_64) docker_arch=amd64 ;; *) echo "Unsupported architecture: $2" >&2; exit 1 ;; esac
     "$PYTHON" -m scripts.packages "$1" apko "$2"
     just keygen
@@ -136,7 +136,7 @@ apko name='all' arch=env('ARCH', 'aarch64'):
     mkdir -p "$sbom"
     pins=$("$PYTHON" -m scripts.packages pins "$1" apko)
     "$DOCKER" run --rm -v "$PWD:/work" -w /work --entrypoint /usr/bin/apko "$APKO_IMAGE" \
-      build "$1/apko.yaml" "$image" "$tarball" $pins --arch "$2" \
+      build "apps/$1/apko.yaml" "$image" "$tarball" $pins --arch "$2" \
       --repository-append "/work/$PACKAGES_DIR" --keyring-append "/work/$KEYRING" --sbom-path "/work/$sbom"
     mv "$sbom/sbom-$2.spdx.json" "$OUT_DIR/$1-$2.spdx.json"
     "$DOCKER" load --input "$tarball"
@@ -145,7 +145,7 @@ apko name='all' arch=env('ARCH', 'aarch64'):
 # Scan the same archive that was tested, with both scanners; CVEs are advisory.
 scan name='all' arch=env('ARCH', 'aarch64'):
     if [[ "$1" == all ]]; then
-      for config in */apko.yaml; do just scan "${config%/*}" "$2"; done
+      for config in apps/*/apko.yaml; do name=${config%/*}; just scan "${name#apps/}" "$2"; done
       exit 0
     fi
     bash scripts/scan.sh "$1" "$2" "$OUT_DIR/$1-$2.tar"
@@ -154,7 +154,7 @@ scan name='all' arch=env('ARCH', 'aarch64'):
 # Explicitly push a previously assembled local image.
 push name:
     if [[ "$1" == all ]]; then
-      for config in */apko.yaml; do just push "${config%/*}"; done
+      for config in apps/*/apko.yaml; do name=${config%/*}; just push "${name#apps/}"; done
       exit 0
     fi
     "$DOCKER" push "$REGISTRY/$OWNER/$1:$TAG"
@@ -168,8 +168,9 @@ clean:
 
 clean-images arch=env('ARCH', 'aarch64'):
     case "$1" in aarch64) docker_arch=arm64 ;; x86_64) docker_arch=amd64 ;; *) exit 1 ;; esac
-    for config in */apko.yaml; do
-      image="$REGISTRY/$OWNER/${config%/*}:$TAG"
+    for config in apps/*/apko.yaml; do
+      name=${config%/*}
+      image="$REGISTRY/$OWNER/${name#apps/}:$TAG"
       "$DOCKER" rmi "$image" "$image-$docker_arch" || true
     done
 

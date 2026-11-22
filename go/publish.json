@@ -1,5 +1,0 @@
-{
-  "repository": "go",
-  "publishLatest": true,
-  "versionSourcePackage": "go-1.26"
-}

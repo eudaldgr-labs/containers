@@ -33,7 +33,7 @@ def candidate(name, arch):
 
 def prepare(name, arch):
     import yaml
-    root = Path(name)
+    root = Path('apps') / name
     metadata = json.loads((root / 'publish.json').read_text()) if (root / 'publish.json').exists() else {}
     repository = metadata.get('repository', name)
     if (root / 'melange.yaml').exists():

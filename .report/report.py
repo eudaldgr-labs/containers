@@ -84,7 +84,7 @@ for rpath in reports:
 scanned_count = len(apps)
 expected_archs = {"x86_64", "aarch64"}
 scanned_sources = set().union(*(app["source_images"] for app in apps.values()))
-expected_sources = {os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(PROJECT_ROOT, "*/apko.yaml"))}
+expected_sources = {os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(PROJECT_ROOT, "apps/*/apko.yaml"))}
 for source in sorted(expected_sources - scanned_sources):
     apps[f"missing:{source}"] = {
         "source_images": {source}, "repository": source, "release_tag": None,

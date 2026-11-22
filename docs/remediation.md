@@ -110,7 +110,7 @@ Wolfi runtime libraries are patched separately, by the daily Apko rebuild.
 mise install
 just setup
 just remediate prometheus-minimal aarch64
-git diff prometheus-minimal/melange.yaml
+git diff apps/prometheus-minimal/melange.yaml
 TAG=remediation-check just build prometheus-minimal aarch64
 jq '{deps, blocked}' out/remediation/prometheus-minimal/plan.json
 ```

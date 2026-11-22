@@ -178,18 +178,18 @@
     },
     {
       description: "Keep libtorrent-v1 on 1.2.x",
-      matchFileNames: ["libtorrent-v1/**"],
+      matchFileNames: ["apps/libtorrent-v1/**"],
       matchPackageNames: ["arvidn/libtorrent"],
       allowedVersions: "/^1\\.2\\./",
     },
     {
       description: "Keep rocksdb-10 on 10.x",
-      matchFileNames: ["rocksdb-10/**"],
+      matchFileNames: ["apps/rocksdb-10/**"],
       allowedVersions: "/^10\\./",
     },
     {
       description: "Keep static OpenSSL on the supported 3.6 ABI",
-      matchFileNames: ["openssl-static/**"],
+      matchFileNames: ["apps/openssl-static/**"],
       matchPackageNames: ["openssl/openssl"],
       allowedVersions: "/^3\\.6\\./",
     },

@@ -9,13 +9,15 @@ import sys
 
 import yaml
 
+APPS = 'apps'
+
 
 def read(path):
     return yaml.safe_load(path.read_text())
 
 
 def catalog(root):
-    recipes = {p.parent.name: read(p) for p in sorted(root.glob('*/melange.yaml'))}
+    recipes = {p.parent.name: read(p) for p in sorted((root / APPS).glob('*/melange.yaml'))}
     providers = {}
     for directory, recipe in recipes.items():
         package = recipe['package']
@@ -55,7 +57,7 @@ def order(root, name, kind):
     if name == 'all':
         wanted = set(recipes)
     else:
-        path = root / name / f'{kind}.yaml'
+        path = root / APPS / name / f'{kind}.yaml'
         if not path.is_file():
             raise ValueError(f'Unknown {kind} recipe: {name}')
         wanted = {providers[p][0] for p in local_requirements(read(path), kind, providers)}
@@ -82,15 +84,15 @@ def order(root, name, kind):
 
 def affected(root, changes):
     recipes, providers = catalog(root)
-    images = {p.parent.name for p in root.glob('*/apko.yaml')}
+    images = {p.parent.name for p in (root / APPS).glob('*/apko.yaml')}
     changed = set()
     for filename in changes:
         path = Path(filename)
         if path.suffix == '.md' or path.parts[0] in {'.assets', '.report', 'reports'}:
             continue
-        if path.parts[0] not in recipes.keys() | images:
+        if len(path.parts) < 3 or path.parts[0] != APPS or path.parts[1] not in recipes.keys() | images:
             return set(recipes), images
-        changed.add(path.parts[0])
+        changed.add(path.parts[1])
     deps = graph(root)
     while True:
         expanded = changed | {n for n, ds in deps.items() if ds & changed}
@@ -98,7 +100,7 @@ def affected(root, changes):
             break
         changed = expanded
     selected = {name for name in images if name in changed or
-                {providers[p][0] for p in local_requirements(read(root / name / 'apko.yaml'), 'apko', providers)} & changed}
+                {providers[p][0] for p in local_requirements(read(root / APPS / name / 'apko.yaml'), 'apko', providers)} & changed}
     needed = changed & recipes.keys()
     for name in selected:
         needed.update(order(root, name, 'apko'))
@@ -110,7 +112,7 @@ def affected(root, changes):
 def discover(root, max_tier=2, changes=None):
     deps = graph(root)
     wanted, images = affected(root, changes) if changes is not None else (
-        set(deps), {p.parent.name for p in root.glob('*/apko.yaml')})
+        set(deps), {p.parent.name for p in (root / APPS).glob('*/apko.yaml')})
     levels = {}
     while len(levels) < len(deps):
         ready = {name: max((levels[d] + 1 for d in dependencies), default=0)
@@ -130,7 +132,7 @@ def discover(root, max_tier=2, changes=None):
 
 def check(root, name, kind, arch):
     _, providers = catalog(root)
-    recipe = read(root / name / f'{kind}.yaml')
+    recipe = read(root / APPS / name / f'{kind}.yaml')
     missing = []
     for package in sorted(local_requirements(recipe, kind, providers)):
         directory, filename = providers[package]
@@ -163,7 +165,7 @@ def stage(root, name, arch):
 
 def pins(root, name, kind):
     recipes, providers = catalog(root)
-    recipe = read(root / name / ('melange.yaml' if kind == 'test' else f'{kind}.yaml'))
+    recipe = read(root / APPS / name / ('melange.yaml' if kind == 'test' else f'{kind}.yaml'))
     result = []
     for package in sorted(local_requirements(recipe, kind, providers)):
         directory, _ = providers[package]

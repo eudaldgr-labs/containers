@@ -27,6 +27,7 @@ MANIFESTS = {'go': ['go.mod', 'go.sum', 'go.work', 'go.work.sum'],
              'js': ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']}
 LOCKFILES = {'go': 'go.mod', 'rust': 'Cargo.lock', 'js': 'pnpm-lock.yaml'}
 OUT = Path('out/remediation')
+APPS = Path('apps')
 
 
 class PolicyError(ValueError):
@@ -341,7 +342,7 @@ def check_name(name):
 def recipe(name):
     import yaml
     check_name(name)
-    config = yaml.safe_load((Path(name) / 'melange.yaml').read_text())
+    config = yaml.safe_load((APPS / name / 'melange.yaml').read_text())
     steps = [(i, p) for i, p in enumerate(config['pipeline']) if p.get('uses') == PIPELINE]
     if len(steps) > 1:
         raise ValueError('Use one bump step per recipe')
@@ -351,9 +352,10 @@ def recipe(name):
 
 
 def opted(root=Path('.'), base=None):
-    names = sorted(p.parent.name for p in root.glob('*/melange.yaml') if recipe(p.parent.name)[1])
+    names = sorted(p.parent.name for p in (root / APPS).glob('*/melange.yaml') if recipe(p.parent.name)[1])
     if base:
-        changed = {Path(f).parts[0] for f in run('git', 'diff', '--name-only', f'{base}...HEAD').splitlines() if f}
+        changed = {Path(f).parts[1] for f in run('git', 'diff', '--name-only', f'{base}...HEAD').splitlines()
+                   if f and len(Path(f).parts) > 2 and Path(f).parts[0] == 'apps'}
         names = [n for n in names if n in changed]
     return names
 
@@ -369,7 +371,7 @@ def prepare_plan(name, arch):
     context = destination / 'planner-context'
     shutil.rmtree(context, ignore_errors=True)
     (destination / 'plan.json').unlink(missing_ok=True)
-    shutil.copytree(name, context)
+    shutil.copytree(APPS / name, context)
     helper = context / '.remediation'
     helper.mkdir()
     shutil.copy2(__file__, helper / 'engine.py')
@@ -438,7 +440,7 @@ def released(name, base):
     """Whether the current package version and epoch already exist on the base branch."""
     import yaml
     try:
-        previous = yaml.safe_load(run('git', 'show', f'{base}:{name}/melange.yaml'))['package']
+        previous = yaml.safe_load(run('git', 'show', f'{base}:apps/{name}/melange.yaml'))['package']
     except (subprocess.CalledProcessError, TypeError, KeyError):
         return False
     current = recipe(name)[0]['package']
@@ -471,7 +473,7 @@ def summary(name, plan):
 
 def write(name, base):
     plan = load_plan(OUT / name / 'plan.json')
-    path = Path(name) / 'melange.yaml'
+    path = APPS / name / 'melange.yaml'
     text = path.read_text()
     updated = set_deps(text, plan['deps'])
     changed = updated != text

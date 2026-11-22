@@ -64,7 +64,7 @@ jobs:
           ref: ${{ github.sha }}
           run: just setup && just remediate "${{ matrix.name }}" x86_64
           paths: |
-            ${{ matrix.name }}/melange.yaml
+            apps/${{ matrix.name }}/melange.yaml
           artifact: remediation-${{ matrix.name }}
           extra-files: |
             out/remediation/${{ matrix.name }}/pr.md
@@ -96,7 +96,7 @@ jobs:
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           artifact: remediation-${{ matrix.name }}
           paths: |
-            ${{ matrix.name }}/melange.yaml
+            apps/${{ matrix.name }}/melange.yaml
           ref: ${{ github.sha }}
           branch: remediation/${{ matrix.name }}
           force: "true"

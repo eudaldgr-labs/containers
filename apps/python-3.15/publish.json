@@ -1,0 +1,6 @@
+{
+  "repository": "python",
+  "publishLatest": true,
+  "versionSourcePackage": "python-3.15",
+  "streamTag": "3.15"
+}

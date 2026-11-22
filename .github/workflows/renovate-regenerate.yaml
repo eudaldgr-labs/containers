@@ -34,7 +34,7 @@ jobs:
         with:
           run: just setup && just regenerate x86_64
           paths: |
-            */melange.yaml
+            apps/*/melange.yaml
 
   push:
     needs: regenerate
@@ -48,5 +48,5 @@ jobs:
           client-id: ${{ secrets.BOT_CLIENT_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           paths: |
-            */melange.yaml
+            apps/*/melange.yaml
           commit-message: "fix(deps): refresh security pins for the new release"
