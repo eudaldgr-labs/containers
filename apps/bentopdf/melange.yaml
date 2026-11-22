@@ -89,4 +89,6 @@ test:
         echo 'nonroot:x:65532:65532:nonroot:/:/sbin/nologin' >> /etc/passwd
         echo 'nonroot:x:65532:' >> /etc/group
         mkdir -p /bentopdf/run /bentopdf/cache/client_body /bentopdf/cache/fastcgi /bentopdf/cache/proxy /bentopdf/cache/scgi /bentopdf/cache/uwsgi
-        nginx -t -c /usr/share/bentopdf/nginx.conf -g "user nonroot nonroot;"
+        # The test sandbox maps only root, so nginx cannot chown its temp paths to
+        # 65532 here. The image runs nginx as 65532, where the user directive is unused.
+        nginx -t -c /usr/share/bentopdf/nginx.conf -g "user root root;"
