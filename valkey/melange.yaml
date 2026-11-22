@@ -1,0 +1,74 @@
+package:
+  # Wolfi's versioned Valkey packages provide "valkey"; keep this APK distinct.
+  name: eudaldgr-labs-valkey
+  version: 9.1.0 # renovate: datasource=github-tags depName=valkey-io/valkey
+  epoch: 0
+  description: Valkey in-memory data store
+  copyright:
+    - license: BSD-3-Clause
+
+environment:
+  contents:
+    repositories:
+      - &wolfi-repository https://packages.wolfi.dev/os
+    keyring:
+      - &wolfi-keyring https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    packages:
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - linux-headers
+      - openssl-dev~3.6
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/valkey-io/valkey
+      tag: ${{package.version}}
+
+  - runs: |
+      make -j$(nproc) \
+        BUILD_TLS=yes \
+        MALLOC=libc \
+        USE_SYSTEMD=no
+
+      install -Dm755 src/valkey-server "${{targets.destdir}}/usr/bin/valkey-server"
+      install -Dm755 src/valkey-cli "${{targets.destdir}}/usr/bin/valkey-cli"
+
+      install -Dm644 valkey.conf "${{targets.destdir}}/usr/share/valkey/valkey.conf"
+      sed -i \
+        -e 's|^pidfile .*|pidfile /valkey/run/valkey.pid|' \
+        -e 's|^dir .*|dir /valkey/var|' \
+        "${{targets.destdir}}/usr/share/valkey/valkey.conf"
+
+  - uses: dotnet/entrypoint
+
+  - uses: strip
+
+update:
+  enabled: true
+  github:
+    identifier: valkey-io/valkey
+    use-tag: true
+
+test:
+  environment:
+    contents:
+      repositories:
+        - *wolfi-repository
+      keyring:
+        - *wolfi-keyring
+      packages:
+        - apk-tools
+        - busybox
+        - posix-libc-utils
+        - ${{package.name}}=${{package.full-version}}
+  pipeline:
+    - name: Basic Valkey command test
+      runs: |
+        valkey-server --version
+        valkey-cli --version
+        test -f /usr/share/valkey/valkey.conf
+        mkdir -p /valkey/etc /valkey/run /valkey/var
+        entrypoint --version
+        test -f /valkey/etc/valkey.conf

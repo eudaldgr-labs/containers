@@ -1,0 +1,161 @@
+package:
+  name: qbittorrent-libtorrentv1
+  version: 5.2.3 # renovate: datasource=github-tags depName=qbittorrent/qBittorrent
+  epoch: 0
+  description: qBittorrent BitTorrent client with libtorrent 1.2
+  copyright:
+    - license: GPL-2.0-only
+  dependencies:
+    runtime:
+      - libcrypto3
+      - libssl3
+
+vars:
+  vuetorrent-version: 2.35.0 # renovate: datasource=github-releases depName=VueTorrent/VueTorrent
+
+environment:
+  environment:
+    LANG: C.UTF-8
+    QT_BASE_DIR: "/usr"
+    LD_LIBRARY_PATH: "/usr/lib"
+    DOTNET_NOLOGO: "true"
+    DOTNET_GENERATE_ASPNET_CERTIFICATE: "0"
+  contents:
+    repositories:
+      - &wolfi-repository https://packages.wolfi.dev/os
+    keyring:
+      - &wolfi-keyring https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    packages:
+      - boost-dev~1.86.0
+      - build-base
+      - busybox
+      - clang-18
+      - cmake
+      - curl
+      - git
+      - jq
+      - libtorrent-v1
+      - linux-headers
+      - pkgconf
+      - qt-minimal
+      - samurai
+      - sqlite-dev
+      - unzip
+      - openssl-static
+      - zlib-dev
+      - zlib-static
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/qbittorrent/qBittorrent
+      tag: release-${{package.version}}
+
+  - name: Patch qBittorrent sources
+    runs: |
+      # Allow peer ID and user agent override via environment variables
+      sed -e 's/lt::generate_fingerprint(PEER_ID, QBT_VERSION_MAJOR, QBT_VERSION_MINOR, QBT_VERSION_BUGFIX, QBT_VERSION_BUILD);/getenv("QBITTORRENT_PEER_ID") ? getenv("QBITTORRENT_PEER_ID") : lt::generate_fingerprint(PEER_ID, QBT_VERSION_MAJOR, QBT_VERSION_MINOR, QBT_VERSION_BUGFIX, QBT_VERSION_BUILD);/' \
+          -e 's|const auto USER_AGENT = QStringLiteral("qBittorrent/" QBT_VERSION_2);|const char *envUserAgent = getenv("QBITTORRENT_USER_AGENT"); const auto USER_AGENT = envUserAgent ? QString::fromUtf8(envUserAgent) : QStringLiteral("qBittorrent/" QBT_VERSION_2);|' \
+          -e '1s/^/#include <stdlib.h>\n/' \
+          src/base/bittorrent/sessionimpl.cpp > _
+      mv _ src/base/bittorrent/sessionimpl.cpp
+
+  - uses: cmake/configure
+    with:
+      opts: >
+        -Wno-dev
+        -DQT6=ON
+        -DGUI=OFF
+        -DSTACKTRACE=OFF
+        -DBUILD_SHARED_LIBS=OFF
+        -DCMAKE_PREFIX_PATH="/usr"
+        -DCMAKE_BUILD_TYPE="Release"
+        -DCMAKE_CXX_STANDARD="17"
+        -DCMAKE_EXE_LINKER_FLAGS="-static"
+        -DOPENSSL_USE_STATIC_LIBS=TRUE
+        -DOPENSSL_ROOT_DIR="/usr"
+        -DOPENSSL_INCLUDE_DIR="/usr/include"
+        -DOPENSSL_SSL_LIBRARY="/usr/lib/libssl.a"
+        -DOPENSSL_CRYPTO_LIBRARY="/usr/lib/libcrypto.a"
+        -DZLIB_INCLUDE_DIR="/usr/include"
+        -DZLIB_LIBRARY="/usr/lib/libz.a"
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  - runs: |
+      mv "${{targets.destdir}}/usr/bin/qbittorrent-nox" "${{targets.destdir}}/usr/bin/qbittorrent"
+      rm -rf "${{targets.destdir}}/usr/share/man"
+
+  - uses: dotnet/entrypoint
+
+  - name: Download VueTorrent
+    runs: |
+      vuetorrent_json="$(curl -fsSL "https://api.github.com/repos/VueTorrent/VueTorrent/releases/tags/v${{vars.vuetorrent-version}}")"
+      vuetorrent_url="$(printf '%s' "${vuetorrent_json}" | jq -r '.assets[] | select(.name == "vuetorrent.zip") | .browser_download_url')"
+      vuetorrent_digest="$(printf '%s' "${vuetorrent_json}" | jq -r '.assets[] | select(.name == "vuetorrent.zip") | .digest | sub("^sha256:"; "")')"
+
+      curl -fsSL "${vuetorrent_url}" -o vuetorrent.zip
+      echo "${vuetorrent_digest}  vuetorrent.zip" | sha256sum -c -
+
+      mkdir -p rootfs/qbittorrent/themes
+      unzip -q vuetorrent.zip -d rootfs/qbittorrent/themes
+
+  - uses: eudaldgr-labs/rootfs
+
+  - name: Install symlinks
+    runs: |
+      mkdir -p "${{targets.destdir}}/opt/qBittorrent/logs"
+      ln -sf /qbittorrent/etc   "${{targets.destdir}}/opt/qBittorrent/config"
+      ln -sf /qbittorrent/var   "${{targets.destdir}}/opt/qBittorrent/data"
+      ln -sf /qbittorrent/cache "${{targets.destdir}}/opt/qBittorrent/cache"
+      ln -sf /dev/stdout        "${{targets.destdir}}/opt/qBittorrent/logs/qbittorrent.log"
+
+  - uses: strip
+
+update:
+  enabled: true
+  github:
+    identifier: qbittorrent/qBittorrent
+    use-tag: true
+    strip-prefix: release-
+
+test:
+  environment:
+    contents:
+      repositories:
+        - *wolfi-repository
+      keyring:
+        - *wolfi-keyring
+      packages:
+        - apk-tools
+        - curl
+        - jq
+        - busybox
+        - ${{package.name}}=${{package.full-version}}
+  pipeline:
+    - name: Basic qBittorrent command test
+      runs: |
+        test -x /usr/bin/entrypoint
+        mkdir -p /qbittorrent/etc
+        touch /qbittorrent/etc/lockfile
+        entrypoint --version >/dev/null 2>&1
+        test ! -e /qbittorrent/etc/lockfile
+        qbittorrent --version
+        qbittorrent --help >/dev/null
+    - name: Verify libtorrent v1 through the Web API
+      runs: |
+        profile="$(mktemp -d)"
+        mkdir -p "$profile/qBittorrent/config"
+        printf '[Preferences]\nWebUI\\LocalHostAuth=false\n' > "$profile/qBittorrent/config/qBittorrent.conf"
+        qbittorrent --profile="$profile" --webui-port=18981 --confirm-legal-notice > "$profile/server.log" 2>&1 &
+        qbt_pid=$!
+        trap 'kill "$qbt_pid" 2>/dev/null || true; wait "$qbt_pid" || true; rm -rf "$profile"' EXIT
+        for attempt in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:18981/api/v2/app/buildInfo > "$profile/build.json"; then
+            break
+          fi
+          sleep 1
+        done
+        jq -e '.libtorrent | startswith("1.2.")' "$profile/build.json"
