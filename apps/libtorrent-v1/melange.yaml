@@ -1,7 +1,7 @@
 package:
   name: libtorrent-v1
   version: 1.2.20 # renovate: datasource=github-releases depName=arvidn/libtorrent
-  epoch: 0
+  epoch: 1.2.20
   description: libtorrent-rasterbar 1.2 static BitTorrent library
   copyright:
     - license: BSD-3-Clause
