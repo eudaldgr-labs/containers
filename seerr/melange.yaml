@@ -1,7 +1,7 @@
 package:
   name: seerr
   version: 3.5.1 # renovate: datasource=github-releases depName=seerr-team/seerr
-  epoch: 0
+  epoch: 1
   description: Media request manager for Jellyfin, Plex, Emby, Radarr, and Sonarr
   copyright:
     - license: MIT
@@ -24,7 +24,7 @@ environment:
       - node-gyp
       - nodejs-22
       - npm
-      - pnpm
+      - pnpm=10.33.1-r0
       - py3.14-setuptools
       - python-3.14
 
@@ -33,6 +33,12 @@ pipeline:
     with:
       repository: https://github.com/seerr-team/seerr
       tag: v${{package.version}}
+
+  # Security pins written by `just remediate seerr`; reviewed in a pull request.
+  - uses: eudaldgr-labs/bump
+    with:
+      language: js
+      deps: ""
 
   - runs: |
       mkdir -p /home/build/.home

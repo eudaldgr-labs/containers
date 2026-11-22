@@ -1,7 +1,7 @@
 package:
   name: ghost
   version: 6.73.0 # renovate: datasource=npm depName=ghost
-  epoch: 0
+  epoch: 1
   description: Professional publishing platform
   copyright:
     - license: MIT
@@ -41,32 +41,29 @@ pipeline:
       pnpm install \
         --ignore-scripts \
         --prod \
-        --no-frozen-lockfile
+        --frozen-lockfile
 
   - working-directory: package/node_modules/better-sqlite3
     runs: |
       npm run install
 
-  - working-directory: package
-    runs: |
-      case "${{build.arch}}" in
-        x86_64)  TARGETARCH="x64" ;;
-        aarch64) TARGETARCH="arm64" ;;
-      esac
-
-      # Prune unnecessary files from node_modules
-      npx --yes @usex/prune-mod@0.0.14 --verbose
-      find node_modules -type d \( -name '*musl*' -o -name 'win64-bin' -o -name 'osx-bin' \) -prune -exec rm -rf {} +
-      find node_modules -type f \( -name '*.dll' -o -name '*.exe' -o -name '*.node' -path '*musl*' \) -delete
-      find node_modules -type d -path '*/prebuilds/*' ! -name "linux-${TARGETARCH}" -prune -exec rm -rf {} +
-
   - runs: |
       mkdir -p "${{targets.destdir}}/opt/ghost"
       cp -a package/. "${{targets.destdir}}/opt/ghost/"
 
+  - uses: eudaldgr-labs/prune
+    with:
+      paths: /opt/ghost
+
   - runs: |
+      mkdir -p "${{targets.destdir}}/${{package.name}}/etc"
       mkdir -p "${{targets.destdir}}/${{package.name}}/log"
       mkdir -p "${{targets.destdir}}/${{package.name}}/var"
+      cp -a "${{targets.destdir}}/opt/ghost/content/." "${{targets.destdir}}/${{package.name}}/var/"
+      rm -rf "${{targets.destdir}}/${{package.name}}/var/logs"
+      rm -rf "${{targets.destdir}}/opt/ghost/content" "${{targets.destdir}}/opt/ghost/log"
+      ln -sf /${{package.name}}/log "${{targets.destdir}}/${{package.name}}/var/logs"
+      ln -sf /${{package.name}}/etc/config.production.json "${{targets.destdir}}/opt/ghost/config.production.json"
       ln -sf /${{package.name}}/var "${{targets.destdir}}/opt/ghost/content"
       ln -sf /${{package.name}}/log "${{targets.destdir}}/opt/ghost/log"
 
@@ -83,7 +80,15 @@ test:
         - *wolfi-keyring
       packages:
         - busybox
+        - nodejs-22-minimal
+        - ${{package.name}}=${{package.full-version}}
   pipeline:
-    - name: Mock test
+    - name: Ghost package layout test
       runs: |
-        true
+        test -f /opt/ghost/index.js
+        test -d /ghost/var/themes
+        test -L /ghost/var/logs
+        test -L /opt/ghost/config.production.json
+        test -L /opt/ghost/content
+        test -L /opt/ghost/log
+        node -e "require('/opt/ghost/node_modules/better-sqlite3')(':memory:').close(); require('module').createRequire(require.resolve('/opt/ghost/node_modules/@tryghost/image-transform'))('sharp'); require('/opt/ghost/package.json')"
