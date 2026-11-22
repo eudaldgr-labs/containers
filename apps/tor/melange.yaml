@@ -1,6 +1,7 @@
 package:
   name: tor
-  version: 0.4.9.5 # renovate: datasource=gitlab-tags depName=tpo/core/tor registryUrl=https://gitlab.torproject.org extractVersion=^tor-(?<version>.*)$
+  # renovate: datasource=gitlab-tags depName=tpo/core/tor registryUrl=https://gitlab.torproject.org extractVersion=^tor-(?<version>.*)$
+  version: 0.4.9.5
   epoch: 1
   description: Tor anonymity network
   copyright:

@@ -1,6 +1,7 @@
 package:
   name: openssl-static
-  version: 3.6.5 # renovate: datasource=github-tags depName=openssl/openssl
+  # renovate: datasource=github-tags depName=openssl/openssl
+  version: 3.6.5
   epoch: 0
   description: OpenSSL static libraries
   copyright:

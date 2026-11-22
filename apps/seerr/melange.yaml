@@ -1,6 +1,7 @@
 package:
   name: seerr
-  version: 3.5.1 # renovate: datasource=github-releases depName=seerr-team/seerr
+  # renovate: datasource=github-releases depName=seerr-team/seerr
+  version: 3.5.1
   epoch: 1
   description: Media request manager for Jellyfin, Plex, Emby, Radarr, and Sonarr
   copyright:
