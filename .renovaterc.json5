@@ -118,16 +118,25 @@
       versioning: "regex:^(?:miniupnpc_)?(?<major>\\d+)[._](?<minor>\\d+)[._](?<patch>\\d+)$",
     },
     {
-      description: "LND prereleases (0.20.1-beta) are written back as APK suffixes (0.20.1_beta)",
+      description: "LND releases (0.20.1-beta) are written back as APK suffixes (0.20.1_beta); release candidates (0.20.1-beta.rc1) precede them and never match",
       matchPackageNames: ["lightningnetwork/lnd"],
       extractVersion: "^v(?<version>.*)$",
-      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:[_-](?<prerelease>.*))?$",
+      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:[_-]beta)?$",
     },
     {
       description: "Knots tags (29.3.knots20260210) are written back as 29.3.20260210",
       matchPackageNames: ["bitcoinknots/bitcoin"],
       extractVersion: "^v(?<version>.*)$",
       versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?:knots|\\.)(?<patch>\\d+)$",
+    },
+    {
+      description: "The image's CONFIGARR_VERSION moves with the recipe version in the same pull request",
+      matchFileNames: ["apps/configarr/melange.yaml", "apps/configarr/apko.yaml"],
+      matchPackageNames: ["raydak-labs/configarr"],
+      groupName: "configarr",
+      additionalBranchPrefix: "",
+      semanticCommitType: "fix",
+      semanticCommitScope: "configarr",
     },
     {
       description: "Scope APK pins by the directory that owns them",
