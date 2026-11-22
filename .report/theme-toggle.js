@@ -1,5 +1,5 @@
 (() => {
-  const storageKey = 'vegops-report-theme';
+  const storageKey = 'eudaldgr-labs-report-theme';
   const preferences = ['light', 'auto', 'dark'];
   const root = document.documentElement;
   const button = document.getElementById('theme-toggle');

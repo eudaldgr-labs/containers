@@ -1,5 +1,5 @@
 (() => {
-  const storageKey = "vegops-report-theme";
+  const storageKey = "eudaldgr-labs-report-theme";
 
   try {
     const savedTheme = window.localStorage.getItem(storageKey);

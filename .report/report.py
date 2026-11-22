@@ -120,7 +120,7 @@ page = f"""<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VegOps — Container security</title>
+  <title>eudaldgr-labs — Container security</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="{THEME_BOOTSTRAP_FILE}"></script>
@@ -132,7 +132,7 @@ page = f"""<!DOCTYPE html>
 </head>
 <body>
   <nav class="topbar" aria-label="Main navigation">
-    <a class="brand" href="./"><img src="favicon.png" alt="" class="logo">vegops<span>/ containers</span></a>
+    <a class="brand" href="./"><img src="favicon.png" alt="" class="logo">eudaldgr-labs<span>/ containers</span></a>
     <a href="https://github.com/eudaldgr-labs/containers">Source ↗</a>
   </nav>
   <main class="container">
@@ -141,7 +141,7 @@ page = f"""<!DOCTYPE html>
         <div class="header-copy">
           <p class="eyebrow">REGISTRY / SECURITY</p>
           <h1>Container security.</h1>
-          <p class="intro">Vulnerability reports for the VegOps image collection.</p>
+          <p class="intro">Vulnerability reports for the eudaldgr-labs image collection.</p>
           <p class="status-line">
             {scanned_count} scanned releases · Generated {now}
           </p>
@@ -355,7 +355,7 @@ for _, app in sorted(apps.items(), key=app_sort_key):
     '''
     page += "</div>"
 
-page += '</section><footer><span>VegOps · Built with Wolfi, Melange &amp; Apko</span><a href="https://github.com/eudaldgr-labs/containers">Browse recipes ↗</a></footer></main></body></html>'
+page += '</section><footer><span>eudaldgr-labs · Built with Wolfi, Melange &amp; Apko</span><a href="https://github.com/eudaldgr-labs/containers">Browse recipes ↗</a></footer></main></body></html>'
 
 site_dir = os.path.join(PROJECT_ROOT, "site")
 os.makedirs(site_dir, exist_ok=True)
