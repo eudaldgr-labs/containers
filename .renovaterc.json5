@@ -1,0 +1,218 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["local>eudaldgr-labs/.github:renovate-config"],
+  reviewers: ["eudaldgr"],
+  customDatasources: {
+    plex: {
+      defaultRegistryUrlTemplate: "https://plex.tv/api/downloads/5.json",
+      format: "json",
+      transformTemplates: [
+        '{ "releases": [{ "version": computer.Linux.version }], "homepage": "https://www.plex.tv/media-server-downloads/" }',
+      ],
+    },
+  },
+  customManagers: [
+    {
+      customType: "regex",
+      description: "Update Melange package.version and reset epoch",
+      managerFilePatterns: ["/(^|/)melange\\.yaml$/"],
+      matchStrings: [
+        "(?<indentation>[ \\t]+)version:[ \\t]*[\"\\']?(?<currentValue>[^\\s#\\n\"\\']+)[\"\\']?[ \\t]*# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?\\r?\\n[ \\t]+epoch:[ \\t]*\\d+",
+      ],
+      autoReplaceStringTemplate: '{{{indentation}}}version: {{#if (equals depName "bitcoinknots/bitcoin")}}{{{replace "[.]knots" "." newValue}}}{{else}}{{#if (equals depName "miniupnp/miniupnp")}}{{{replace "_" "." (replace "^miniupnpc_" "" newValue)}}}{{else}}{{#if (equals depName "lightningnetwork/lnd")}}{{{replace "-" "_" newValue}}}{{else}}{{{newValue}}}{{/if}}{{/if}}{{/if}} # renovate: datasource={{{datasource}}} depName={{{depName}}}{{#if registryUrls}} registryUrl={{{registryUrls.[0]}}}{{/if}}{{#if extractVersion}} extractVersion={{{extractVersion}}}{{/if}}{{#if versioning}} versioning={{{versioning}}}{{/if}}\n{{{indentation}}}epoch: 0',
+      depTypeTemplate: "melange-package-version",
+      currentValueTemplate: '{{#if (equals depName "bitcoinknots/bitcoin")}}{{{replace "^([0-9]+)[.]([0-9]+)[.]([0-9]+)$" "$1.$2.knots$3" currentValue}}}{{else}}{{#if (equals depName "miniupnp/miniupnp")}}miniupnpc_{{{replace "[.]" "_" currentValue}}}{{else}}{{#if (equals depName "lightningnetwork/lnd")}}{{{replace "_" "-" currentValue}}}{{else}}{{{currentValue}}}{{/if}}{{/if}}{{/if}}',
+    },
+    {
+      customType: "regex",
+      description: "Update Melange variable versions",
+      managerFilePatterns: ["/(^|/)melange\\.yaml$/"],
+      matchStrings: [
+        "(?<prefix>^|\\n)(?<indentation>[ \\t]+)(?<varName>[A-Za-z0-9_.-]+-version):\\s*[\"']?(?<currentValue>[^\\s#\\n\"']+)[\"']?\\s*# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?",
+      ],
+      depTypeTemplate: "melange-var-version",
+    },
+    {
+      customType: "regex",
+      description: "Wolfi APK pins in Melange recipes: build, test and runtime package lists",
+      managerFilePatterns: ["/(^|/)melange\\.ya?ml$/"],
+      matchStrings: [
+        "\\n[ \\t]*-[ \\t]+[\"']?(?<depName>[a-z0-9][a-z0-9._+-]*)=(?<currentValue>[0-9][A-Za-z0-9._+~]*-r[0-9]+)[\"']?",
+      ],
+      datasourceTemplate: "apk",
+      versioningTemplate: "apk",
+      registryUrlTemplate: "https://packages.wolfi.dev/os?arch=x86_64",
+      depTypeTemplate: "melange-apk",
+    },
+    {
+      customType: "regex",
+      description: "Wolfi APK pins required by shared Melange pipelines",
+      managerFilePatterns: ["/(^|/)\\.pipelines/.+\\.ya?ml$/"],
+      matchStrings: [
+        "\\n[ \\t]*-[ \\t]+[\"']?(?<depName>[a-z0-9][a-z0-9._+-]*)=(?<currentValue>[0-9][A-Za-z0-9._+~]*-r[0-9]+)[\"']?",
+      ],
+      datasourceTemplate: "apk",
+      versioningTemplate: "apk",
+      registryUrlTemplate: "https://packages.wolfi.dev/os?arch=x86_64",
+      depTypeTemplate: "pipeline-apk",
+    },
+    {
+      customType: "regex",
+      description: "Wolfi APK pins in Apko image contents",
+      managerFilePatterns: ["/(^|/)apko\\.ya?ml$/"],
+      matchStrings: [
+        "\\n[ \\t]*-[ \\t]+[\"']?(?<depName>[a-z0-9][a-z0-9._+-]*)=(?<currentValue>[0-9][A-Za-z0-9._+~]*-r[0-9]+)[\"']?",
+      ],
+      datasourceTemplate: "apk",
+      versioningTemplate: "apk",
+      registryUrlTemplate: "https://packages.wolfi.dev/os?arch=x86_64",
+      depTypeTemplate: "apko-apk",
+    },
+  ],
+  bumpVersions: [
+    {
+      name: "Bump each changed recipe once, excluding recipes whose package version was reset",
+      filePatterns: [
+        '{RENOVATE_NO_MATCH{{#each upgrades}}{{#if (or (equals depType "melange-var-version") (equals depType "melange-apk"))}},{{{packageFile}}}{{/if}}{{/each}},RENOVATE_NO_MATCH}',
+        '!{RENOVATE_NO_MATCH{{#each upgrades}}{{#if (equals depType "melange-package-version")}},{{{packageFile}}}{{/if}}{{/each}},RENOVATE_NO_MATCH}',
+      ],
+      matchStrings: ["(?<indentation>[ \\t]+)epoch:[ \\t]*(?<version>\\d+)"],
+      bumpType: "major",
+    },
+  ],
+  packageRules: [
+    {
+      description: "One branch per recipe, scoped commits, so recipes that share an upstream never share a PR",
+      matchFileNames: ["**/melange.yaml"],
+      additionalBranchPrefix: "{{parentDir}}-",
+      semanticCommitType: "fix",
+      semanticCommitScope: "{{parentDir}}",
+      commitMessageTopic: "{{depName}}",
+    },
+    {
+      description: "Keep the zer0ver major branch from default.json together with the recipe prefix",
+      matchFileNames: ["**/melange.yaml"],
+      matchUpdateTypes: ["minor"],
+      matchCurrentVersion: "/^v?0\\./",
+      additionalBranchPrefix: "{{parentDir}}-major-",
+    },
+    {
+      description: "Recipe version updates are package releases",
+      matchDepTypes: ["melange-package-version"],
+      addLabels: ["melange/release"],
+    },
+    {
+      description: "Bundled versions and build-environment APKs only rebuild the package",
+      matchDepTypes: ["melange-var-version", "melange-apk"],
+      addLabels: ["melange/rebuild"],
+    },
+    {
+      description: "MiniUPnPc tags (miniupnpc_2_3_3) are compared upstream and written back as 2.3.3",
+      matchPackageNames: ["miniupnp/miniupnp"],
+      versioning: "regex:^(?:miniupnpc_)?(?<major>\\d+)[._](?<minor>\\d+)[._](?<patch>\\d+)$",
+    },
+    {
+      description: "LND prereleases (0.20.1-beta) are written back as APK suffixes (0.20.1_beta)",
+      matchPackageNames: ["lightningnetwork/lnd"],
+      extractVersion: "^v(?<version>.*)$",
+      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:[_-](?<prerelease>.*))?$",
+    },
+    {
+      description: "Knots tags (29.3.knots20260210) are written back as 29.3.20260210",
+      matchPackageNames: ["bitcoinknots/bitcoin"],
+      extractVersion: "^v(?<version>.*)$",
+      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?:knots|\\.)(?<patch>\\d+)$",
+    },
+    {
+      description: "Scope APK pins by the directory that owns them",
+      matchDatasources: ["apk"],
+      semanticCommitType: "fix",
+      semanticCommitScope: "{{parentDir}}",
+      commitMessageTopic: "APK {{depName}}",
+      additionalBranchPrefix: "{{parentDir}}-",
+    },
+    {
+      description: "Shared pipelines affect every recipe that uses them",
+      matchDepTypes: ["pipeline-apk"],
+      semanticCommitType: "ci",
+      semanticCommitScope: "pipelines",
+      additionalBranchPrefix: "pipelines-",
+    },
+    {
+      description: "Upstream tags with a v prefix",
+      matchPackageNames: [
+        "AdguardTeam/AdGuardHome",
+        "arvidn/libtorrent",
+        "bitcoin/bitcoin",
+        "seerr-team/seerr",
+        "VueTorrent/VueTorrent",
+        "vaultwarden/web-vault",
+      ],
+      extractVersion: "^v(?<version>.*)$",
+    },
+    {
+      description: "Servarr releases use four numeric components",
+      matchPackageNames: [
+        "Lidarr/Lidarr",
+        "Prowlarr/Prowlarr",
+        "Radarr/Radarr",
+        "Readarr/Readarr",
+        "Sonarr/Sonarr",
+        "Whisparr/Whisparr",
+      ],
+      extractVersion: "^v?(?<version>.*)$",
+      versioning: "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)$",
+    },
+    {
+      matchPackageNames: ["qbittorrent/qBittorrent"],
+      extractVersion: "^release-(?<version>.*)$",
+    },
+    {
+      matchPackageNames: ["openssl/openssl"],
+      extractVersion: "^openssl-(?<version>.*)$",
+    },
+    {
+      matchDatasources: ["custom.plex"],
+      extractVersion: "^(?<version>\\d+\\.\\d+\\.\\d+\\.\\d+)(?:-.+)?$",
+      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)$",
+    },
+    {
+      description: "Keep libtorrent-v1 on 1.2.x",
+      matchFileNames: ["libtorrent-v1/**"],
+      matchPackageNames: ["arvidn/libtorrent"],
+      allowedVersions: "/^1\\.2\\./",
+    },
+    {
+      description: "Keep rocksdb-10 on 10.x",
+      matchFileNames: ["rocksdb-10/**"],
+      allowedVersions: "/^10\\./",
+    },
+    {
+      description: "Keep static OpenSSL on the supported 3.6 ABI",
+      matchFileNames: ["openssl-static/**"],
+      matchPackageNames: ["openssl/openssl"],
+      allowedVersions: "/^3\\.6\\./",
+    },
+    {
+      description: "Seerr requires pnpm 10; Wolfi's pnpm package has moved to 11",
+      matchDatasources: ["apk"],
+      matchPackageNames: ["pnpm"],
+      allowedVersions: "<11",
+    },
+    {
+      groupName: "github-actions",
+      matchManagers: ["github-actions"],
+    },
+    {
+      description: "Melange and Apko images move together",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["cgr.dev/chainguard/melange", "ghcr.io/wolfi-dev/sdk"],
+      groupName: "wolfi-tools",
+    },
+    {
+      description: "Planner and bump tooling move together",
+      matchDepTypes: ["pipeline-apk"],
+      groupName: "remediation-tools",
+    },
+  ],
+}
