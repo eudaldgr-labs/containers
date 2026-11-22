@@ -1,0 +1,18 @@
+[tools]
+actionlint = "1.7.12"
+just = "1.59.0"
+lefthook = "2.2.2"
+"github:oxc-project/oxc" = { version = "0.79.0", version_prefix = "oxfmt_v", matching_regex = "^oxfmt-", rename_exe = "oxfmt" }
+python = "3.14.10"
+shellcheck = "0.11.0"
+trivy = "0.76.1"
+zizmor = "1.32.0"
+
+[env]
+# renovate: datasource=docker depName=ghcr.io/wolfi-dev/sdk
+APKO_IMAGE = "ghcr.io/wolfi-dev/sdk:latest@sha256:71c60c596fd1414e0a765ac3980b757370da83ab1573a6d34a0e2ce991efd754"
+# renovate: datasource=docker depName=cgr.dev/chainguard/melange
+MELANGE_IMAGE = "cgr.dev/chainguard/melange:latest@sha256:931992bba27efcf8142f76e0f62759fbafdc13d6eef7bf9b43ce507dcb4193dd"
+
+[hooks]
+postinstall = "lefthook install"

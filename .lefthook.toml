@@ -1,0 +1,5 @@
+# Shared formatting and audit hooks (oxfmt, just --fmt, mise fmt + lock, shellcheck, zizmor).
+[[remotes]]
+git_url = "https://github.com/eudaldgr-labs/.github"
+ref = "main"
+configs = ["lefthook.common.toml"]

@@ -8,3 +8,5 @@ cve-report-*.json
 melange.rsa
 melange.rsa.pub
 sbom*
+__pycache__/
+.venv/
