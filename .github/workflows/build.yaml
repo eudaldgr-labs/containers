@@ -4,10 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "*/apko.yaml"
-      - "*/melange.yaml"
-      - "*/publish.json"
-      - ".github/workflows/build.yaml"
+      - "**"
+      - "!**/*.md"
+      - "!.assets/**"
   pull_request:
     branches: [main]
   schedule:
@@ -16,191 +15,75 @@ on:
 
 permissions:
   contents: read
-  packages: write
-  security-events: write
-  id-token: write
-  actions: read
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY_HOST: ghcr.io
+  OWNER: ${{ github.repository_owner }}
   REGISTRY_NAMESPACE: ghcr.io/${{ github.repository_owner }}
-  MELANGE_VERSION: v0.63.2 # renovate: datasource=github-releases depName=chainguard-dev/melange
-  APKO_IMAGE: ghcr.io/wolfi-dev/sdk:latest@sha256:71c60c596fd1414e0a765ac3980b757370da83ab1573a6d34a0e2ce991efd754 # renovate: datasource=docker depName=ghcr.io/wolfi-dev/sdk
-  MELANGE_SIGNING_KEY: ${{ secrets.MELANGE_SIGNING_KEY }}
-  MELANGE_SIGNING_KEY_PUB: ${{ secrets.MELANGE_SIGNING_KEY_PUB }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  MAX_DEP_TIER: 5
+  MAX_DEP_TIER: 2
 
 jobs:
   ##############################################################################
   # DISCOVER PACKAGES AND IMAGES TO BUILD (outputs for downstream jobs)        #
   ##############################################################################
   discover:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       base_packages: ${{ steps.set.outputs.base_packages }}
       deps_tier_1: ${{ steps.set.outputs.deps_tier_1 }}
       deps_tier_2: ${{ steps.set.outputs.deps_tier_2 }}
-      deps_tier_3: ${{ steps.set.outputs.deps_tier_3 }}
-      deps_tier_4: ${{ steps.set.outputs.deps_tier_4 }}
-      deps_tier_5: ${{ steps.set.outputs.deps_tier_5 }}
       apko_images: ${{ steps.set.outputs.apko_images }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
+
+      - name: Set up validation tools
+        run: mise install actionlint shellcheck zizmor
+
+      - name: Check automation
+        run: |
+          just setup
+          just lint
+
+      - name: Fetch PR base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
 
       - id: set
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mapfile -t all_apko < <(find . -maxdepth 2 -name apko.yaml | sed 's|^\./||; s|/apko.yaml$||' | sort -u)
-          mapfile -t all_melange < <(find . -maxdepth 2 -name melange.yaml | sed 's|^\./||; s|/melange.yaml$||' | sort -u)
-
-          json_array() {
-            if [ "$#" -eq 0 ]; then
-              printf '[]'
-            else
-              printf '%s\n' "$@" | jq -R -s -c 'split("\n") | map(select(length > 0))'
-            fi
-          }
-
-          declare -A deps_of
-          for pkg in "${all_melange[@]}"; do
-            pkg_deps=""
-            for dep in "${all_melange[@]}"; do
-              if [ "$pkg" != "$dep" ] && grep -E -q "^[[:space:]]+-[[:space:]]+${dep}(-.*)?(=.*)?$" "$pkg/melange.yaml"; then
-                pkg_deps="$pkg_deps $dep"
-              fi
-            done
-            deps_of["$pkg"]="${pkg_deps# }"
-          done
-
-          base_packages=()
-          dep_packages=()
-          for pkg in "${all_melange[@]}"; do
-            if [ -n "${deps_of[$pkg]}" ]; then
-              dep_packages+=("$pkg")
-            else
-              base_packages+=("$pkg")
-            fi
-          done
-
-          declare -A resolved
-          for pkg in "${base_packages[@]}"; do
-            resolved["$pkg"]=1
-          done
-
-          sorted_deps=()
-          remaining=("${dep_packages[@]}")
-          max_iter=${#dep_packages[@]}
-          iter=0
-
-          while [ "${#remaining[@]}" -gt 0 ]; do
-            ((iter += 1))
-            if [ "$iter" -gt "$max_iter" ]; then
-              echo "::error::Circular dependency: ${remaining[*]}"
-              exit 1
-            fi
-
-            progress=false
-            next=()
-            for pkg in "${remaining[@]}"; do
-              all_ok=true
-              for dep in ${deps_of[$pkg]}; do
-                if [ -z "${resolved[$dep]+x}" ]; then
-                  all_ok=false
-                  break
-                fi
-              done
-
-              if [ "$all_ok" = true ]; then
-                sorted_deps+=("$pkg")
-                resolved["$pkg"]=1
-                progress=true
-              else
-                next+=("$pkg")
-              fi
-            done
-
-            if [ "$progress" = false ]; then
-              echo "::error::Circular dependency: ${next[*]}"
-              exit 1
-            fi
-
-            remaining=("${next[@]}")
-          done
-
-          MAX_TIERS=${{ env.MAX_DEP_TIER }}
-
-          declare -A pkg_level
-          for pkg in "${base_packages[@]}"; do
-            pkg_level["$pkg"]=0
-          done
-
-          for i in $(seq 1 "$MAX_TIERS"); do
-            declare -a "tier_$i=()"
-          done
-
-          for pkg in "${sorted_deps[@]}"; do
-            max_dep_level=0
-            for dep in ${deps_of[$pkg]}; do
-              dep_lvl=${pkg_level[$dep]:-0}
-              if [ "$dep_lvl" -gt "$max_dep_level" ]; then
-                max_dep_level=$dep_lvl
-              fi
-            done
-
-            level=$((max_dep_level + 1))
-            if [ "$level" -gt "$MAX_TIERS" ]; then
-              echo "::error::Package '$pkg' requires tier $level but max is $MAX_TIERS. Add more tier jobs to the workflow."
-              exit 1
-            fi
-
-            pkg_level["$pkg"]=$level
-            eval "tier_${level}+=(\"$pkg\")"
-          done
-
-          echo "base_packages=$(json_array "${base_packages[@]}")" >> "$GITHUB_OUTPUT"
-          for i in $(seq 1 "$MAX_TIERS"); do
-            eval "pkgs=(\"\${tier_${i}[@]}\")"
-            echo "deps_tier_${i}=$(json_array "${pkgs[@]}")" >> "$GITHUB_OUTPUT"
-          done
-          echo "apko_images=$(json_array "${all_apko[@]}")" >> "$GITHUB_OUTPUT"
-
-          echo "Base: ${base_packages[*]:-<none>}"
-          for i in $(seq 1 "$MAX_TIERS"); do
-            eval "pkgs=(\"\${tier_${i}[@]}\")"
-            if [ "${#pkgs[@]}" -gt 0 ]; then
-              echo "Deps tier $i: ${pkgs[*]}"
-            fi
-          done
-          echo "Images: ${all_apko[*]:-<none>}"
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+        run: .venv/bin/python -m scripts.packages discover
 
   ##############################################################################
   # GENERATE EPHEMERAL SIGNING KEY (PR only - secrets not available for forks) #
   ##############################################################################
   keygen:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install melange
-        uses: chainguard-dev/actions/setup-melange@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
         with:
-          version: ${{ env.MELANGE_VERSION }}
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
 
       - name: Generate ephemeral signing key
-        uses: chainguard-dev/actions/melange-keygen@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
-        with:
-          signing-key-path: ${{ github.workspace }}/melange.rsa
+        run: just keygen
 
       - name: Upload signing key
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -216,20 +99,26 @@ jobs:
   ##############################################################################
   melange-build-base:
     needs: [discover, keygen]
-    if: always() && needs.discover.outputs.base_packages != '[]' && needs.discover.outputs.base_packages != '[""]'
+    if: ${{ !cancelled() && needs.discover.result == 'success' && (needs.keygen.result == 'success' || needs.keygen.result == 'skipped') && needs.discover.outputs.base_packages != '[]' && needs.discover.outputs.base_packages != '[""]' }}
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
         name: ${{ fromJson(needs.discover.outputs.base_packages) }}
         arch: [x86_64, aarch64]
 
-    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
 
       - name: Build package
         uses: ./.github/actions/melange-build
@@ -237,9 +126,8 @@ jobs:
           package-name: ${{ matrix.name }}
           arch: ${{ matrix.arch }}
           event-name: ${{ github.event_name }}
-          signing-key-secret: ${{ env.MELANGE_SIGNING_KEY }}
-          signing-key-pub-secret: ${{ env.MELANGE_SIGNING_KEY_PUB }}
-          melange-version: ${{ env.MELANGE_VERSION }}
+          signing-key-secret: ${{ secrets.MELANGE_SIGNING_KEY }}
+          signing-key-pub-secret: ${{ secrets.MELANGE_SIGNING_KEY_PUB }}
 
   ##############################################################################
   # TIER 2+: BUILD DEPENDENT MELANGE PACKAGES (tiered by dependency depth)     #
@@ -247,542 +135,253 @@ jobs:
   melange-build-deps-tier-1:
     needs: [discover, keygen, melange-build-base]
     if: >-
-      always()
+      !cancelled()
+      && needs.discover.result == 'success'
+      && (needs.keygen.result == 'success' || needs.keygen.result == 'skipped')
       && needs.discover.outputs.deps_tier_1 != '[]'
       && needs.discover.outputs.deps_tier_1 != '[""]'
-      && (needs.melange-build-base.result == 'success' || needs.melange-build-base.result == 'skipped')
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
         name: ${{ fromJson(needs.discover.outputs.deps_tier_1) }}
         arch: [x86_64, aarch64]
 
-    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
 
       - name: Build package
         uses: ./.github/actions/melange-build
         with:
           package-name: ${{ matrix.name }}
           arch: ${{ matrix.arch }}
-          has-dependencies: "true"
           event-name: ${{ github.event_name }}
-          signing-key-secret: ${{ env.MELANGE_SIGNING_KEY }}
-          signing-key-pub-secret: ${{ env.MELANGE_SIGNING_KEY_PUB }}
-          melange-version: ${{ env.MELANGE_VERSION }}
+          signing-key-secret: ${{ secrets.MELANGE_SIGNING_KEY }}
+          signing-key-pub-secret: ${{ secrets.MELANGE_SIGNING_KEY_PUB }}
 
   melange-build-deps-tier-2:
     needs: [discover, keygen, melange-build-base, melange-build-deps-tier-1]
     if: >-
-      always()
+      !cancelled()
+      && needs.discover.result == 'success'
+      && (needs.keygen.result == 'success' || needs.keygen.result == 'skipped')
       && needs.discover.outputs.deps_tier_2 != '[]'
       && needs.discover.outputs.deps_tier_2 != '[""]'
-      && (needs.melange-build-base.result == 'success' || needs.melange-build-base.result == 'skipped')
-      && (needs.melange-build-deps-tier-1.result == 'success' || needs.melange-build-deps-tier-1.result == 'skipped')
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
         name: ${{ fromJson(needs.discover.outputs.deps_tier_2) }}
         arch: [x86_64, aarch64]
 
-    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
 
       - name: Build package
         uses: ./.github/actions/melange-build
         with:
           package-name: ${{ matrix.name }}
           arch: ${{ matrix.arch }}
-          has-dependencies: "true"
           event-name: ${{ github.event_name }}
-          signing-key-secret: ${{ env.MELANGE_SIGNING_KEY }}
-          signing-key-pub-secret: ${{ env.MELANGE_SIGNING_KEY_PUB }}
-          melange-version: ${{ env.MELANGE_VERSION }}
-
-  melange-build-deps-tier-3:
-    needs:
-      [
-        discover,
-        keygen,
-        melange-build-base,
-        melange-build-deps-tier-1,
-        melange-build-deps-tier-2,
-      ]
-    if: >-
-      always()
-      && needs.discover.outputs.deps_tier_3 != '[]'
-      && needs.discover.outputs.deps_tier_3 != '[""]'
-      && (needs.melange-build-base.result == 'success' || needs.melange-build-base.result == 'skipped')
-      && (needs.melange-build-deps-tier-2.result == 'success' || needs.melange-build-deps-tier-2.result == 'skipped')
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        name: ${{ fromJson(needs.discover.outputs.deps_tier_3) }}
-        arch: [x86_64, aarch64]
-
-    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    timeout-minutes: 90
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build package
-        uses: ./.github/actions/melange-build
-        with:
-          package-name: ${{ matrix.name }}
-          arch: ${{ matrix.arch }}
-          has-dependencies: "true"
-          event-name: ${{ github.event_name }}
-          signing-key-secret: ${{ env.MELANGE_SIGNING_KEY }}
-          signing-key-pub-secret: ${{ env.MELANGE_SIGNING_KEY_PUB }}
-          melange-version: ${{ env.MELANGE_VERSION }}
-
-  melange-build-deps-tier-4:
-    needs:
-      [
-        discover,
-        keygen,
-        melange-build-base,
-        melange-build-deps-tier-1,
-        melange-build-deps-tier-2,
-        melange-build-deps-tier-3,
-      ]
-    if: >-
-      always()
-      && needs.discover.outputs.deps_tier_4 != '[]'
-      && needs.discover.outputs.deps_tier_4 != '[""]'
-      && (needs.melange-build-base.result == 'success' || needs.melange-build-base.result == 'skipped')
-      && (needs.melange-build-deps-tier-3.result == 'success' || needs.melange-build-deps-tier-3.result == 'skipped')
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        name: ${{ fromJson(needs.discover.outputs.deps_tier_4) }}
-        arch: [x86_64, aarch64]
-
-    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    timeout-minutes: 90
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build package
-        uses: ./.github/actions/melange-build
-        with:
-          package-name: ${{ matrix.name }}
-          arch: ${{ matrix.arch }}
-          has-dependencies: "true"
-          event-name: ${{ github.event_name }}
-          signing-key-secret: ${{ env.MELANGE_SIGNING_KEY }}
-          signing-key-pub-secret: ${{ env.MELANGE_SIGNING_KEY_PUB }}
-          melange-version: ${{ env.MELANGE_VERSION }}
-
-  melange-build-deps-tier-5:
-    needs:
-      [
-        discover,
-        keygen,
-        melange-build-base,
-        melange-build-deps-tier-1,
-        melange-build-deps-tier-2,
-        melange-build-deps-tier-3,
-        melange-build-deps-tier-4,
-      ]
-    if: >-
-      always()
-      && needs.discover.outputs.deps_tier_5 != '[]'
-      && needs.discover.outputs.deps_tier_5 != '[""]'
-      && (needs.melange-build-base.result == 'success' || needs.melange-build-base.result == 'skipped')
-      && (needs.melange-build-deps-tier-4.result == 'success' || needs.melange-build-deps-tier-4.result == 'skipped')
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        name: ${{ fromJson(needs.discover.outputs.deps_tier_5) }}
-        arch: [x86_64, aarch64]
-
-    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    timeout-minutes: 90
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build package
-        uses: ./.github/actions/melange-build
-        with:
-          package-name: ${{ matrix.name }}
-          arch: ${{ matrix.arch }}
-          has-dependencies: "true"
-          event-name: ${{ github.event_name }}
-          signing-key-secret: ${{ env.MELANGE_SIGNING_KEY }}
-          signing-key-pub-secret: ${{ env.MELANGE_SIGNING_KEY_PUB }}
-          melange-version: ${{ env.MELANGE_VERSION }}
+          signing-key-secret: ${{ secrets.MELANGE_SIGNING_KEY }}
+          signing-key-pub-secret: ${{ secrets.MELANGE_SIGNING_KEY_PUB }}
 
   ##############################################################################
-  # FINAL TIER: BUILD ALL IMAGES (depends on all melange packages)             #
+  # BUILD IMAGES: check local APKs regardless of sibling failures              #
   ##############################################################################
   build-images:
     needs:
-      [
-        discover,
-        melange-build-base,
-        melange-build-deps-tier-1,
-        melange-build-deps-tier-2,
-        melange-build-deps-tier-3,
-        melange-build-deps-tier-4,
-        melange-build-deps-tier-5,
-      ]
+      [discover, keygen, melange-build-base, melange-build-deps-tier-1, melange-build-deps-tier-2]
     if: >-
-      always()
+      !cancelled() && needs.discover.result == 'success'
+      && (needs.keygen.result == 'success' || needs.keygen.result == 'skipped')
       && needs.discover.outputs.apko_images != '[]'
-      && needs.discover.outputs.apko_images != '[""]'
-      && (needs.melange-build-base.result == 'success' || needs.melange-build-base.result == 'skipped')
-      && (needs.melange-build-deps-tier-1.result == 'success' || needs.melange-build-deps-tier-1.result == 'skipped')
-      && (needs.melange-build-deps-tier-2.result == 'success' || needs.melange-build-deps-tier-2.result == 'skipped')
-      && (needs.melange-build-deps-tier-3.result == 'success' || needs.melange-build-deps-tier-3.result == 'skipped')
-      && (needs.melange-build-deps-tier-4.result == 'success' || needs.melange-build-deps-tier-4.result == 'skipped')
-      && (needs.melange-build-deps-tier-5.result == 'success' || needs.melange-build-deps-tier-5.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
     timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
         name: ${{ fromJson(needs.discover.outputs.apko_images) }}
-
+        arch: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install melange
-        uses: chainguard-dev/actions/setup-melange@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
         with:
-          version: ${{ env.MELANGE_VERSION }}
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: Log in to Container Registry
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
+      - name: Install helper dependencies
+        run: just setup
+      - name: Download ephemeral signing key
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: melange-ephemeral-key
+      - name: Set up signing key
+        if: github.event_name != 'pull_request'
+        env:
+          PRIVATE_KEY: ${{ secrets.MELANGE_SIGNING_KEY }}
+          PUBLIC_KEY: ${{ secrets.MELANGE_SIGNING_KEY_PUB }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_KEY" && test -n "$PUBLIC_KEY"
+          printf '%s\n' "$PRIVATE_KEY" > melange.rsa
+          printf '%s\n' "$PUBLIC_KEY" > melange.rsa.pub
+          chmod 600 melange.rsa
+      - name: Download required packages and rebuild index
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          chmod 600 melange.rsa
+          .venv/bin/python -m scripts.packages download "$IMAGE_NAME" apko "$ARCH"
+          just index "$ARCH"
+      - name: Build image once
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+        run: TAG="candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" just apko "$IMAGE_NAME" "$ARCH"
+      - name: Resolve release metadata
+        id: metadata
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+        run: .venv/bin/python -m scripts.release prepare "$IMAGE_NAME" "$ARCH"
+      - name: Scan final image
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mise install trivy
+          just scan "$IMAGE_NAME" "$ARCH"
+      - name: Upload Grype SARIF
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles(format('grype-{0}-{1}.sarif', matrix.name, matrix.arch)) != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: grype-${{ matrix.name }}-${{ matrix.arch }}.sarif
+          category: grype-${{ matrix.name }}-${{ matrix.arch }}
+      - name: Upload Trivy SARIF
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles(format('trivy-{0}-{1}.sarif', matrix.name, matrix.arch)) != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy-${{ matrix.name }}-${{ matrix.arch }}.sarif
+          category: trivy-${{ matrix.name }}-${{ matrix.arch }}
+      - name: Log in to registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download all packages
-        if: >-
-          needs.discover.outputs.base_packages != '[]'
-          || needs.discover.outputs.deps_tier_1 != '[]'
-          || needs.discover.outputs.deps_tier_2 != '[]'
-          || needs.discover.outputs.deps_tier_3 != '[]'
-          || needs.discover.outputs.deps_tier_4 != '[]'
-          || needs.discover.outputs.deps_tier_5 != '[]'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: packages-*-*
-          merge-multiple: true
-          path: .
-
-      - name: Setup signing key
-        run: |
-          if [ ! -f "melange.rsa.pub" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            printf '%s\n' "${{ env.MELANGE_SIGNING_KEY_PUB }}" > melange.rsa.pub
-          fi
-          if [ ! -f "melange.rsa" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            printf '%s\n' "${{ env.MELANGE_SIGNING_KEY }}" > melange.rsa
-            chmod 600 melange.rsa
-          fi
-
-      - name: Re-index local packages
-        run: |
-          if [ -f "melange.rsa" ]; then
-            for arch in x86_64 aarch64; do
-              if [ -d "packages/$arch" ] && compgen -G "packages/$arch/*.apk" > /dev/null; then
-                echo "Indexing $arch packages..."
-                melange index --signing-key melange.rsa -o "packages/$arch/APKINDEX.tar.gz" "packages/$arch"/*.apk
-              fi
-            done
-          fi
-
-      - name: Resolve publish metadata
-        id: publish_meta
-        uses: ./.github/actions/extract-version
-        with:
-          package-name: ${{ matrix.name }}
-
-      - name: Clean SBOMs (x86_64)
-        run: rm -f sbom-*.spdx.json
-
-      - name: Build image tarball (x86_64)
-        uses: chainguard-images/actions/apko-build@8e701b320e7efcb120a1115de26e9fe833f86390 # v1.0.38
-        with:
-          apko-image: ${{ env.APKO_IMAGE }}
-          config: ${{ matrix.name }}/apko.yaml
-          tag: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.name }}:verify-x86_64
-          keyring-append: ./melange.rsa.pub
-          repository-append: ./packages
-          archs: x86_64
-
-      - name: Rename tarball (x86_64)
-        run: mv output.tar ${{ matrix.name }}-x86_64.tar
-
-      - name: Rename SBOM (x86_64)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f "sbom-x86_64.spdx.json" ]; then
-            echo "::error::Expected sbom-x86_64.spdx.json after apko build"
-            ls -1 sbom-*.spdx.json 2>/dev/null || true
-            exit 1
-          fi
-          mv "sbom-x86_64.spdx.json" "${{ matrix.name }}-x86_64.spdx.json"
-          rm -f sbom-index.spdx.json
-
-      - name: Clean SBOMs (aarch64)
-        run: rm -f sbom-*.spdx.json
-
-      - name: Build image tarball (aarch64)
-        uses: chainguard-images/actions/apko-build@8e701b320e7efcb120a1115de26e9fe833f86390 # v1.0.38
-        with:
-          apko-image: ${{ env.APKO_IMAGE }}
-          config: ${{ matrix.name }}/apko.yaml
-          tag: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.name }}:verify-aarch64
-          keyring-append: ./melange.rsa.pub
-          repository-append: ./packages
-          archs: aarch64
-
-      - name: Rename tarball (aarch64)
-        run: mv output.tar ${{ matrix.name }}-aarch64.tar
-
-      - name: Rename SBOM (aarch64)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f "sbom-aarch64.spdx.json" ]; then
-            echo "::error::Expected sbom-aarch64.spdx.json after apko build"
-            ls -1 sbom-*.spdx.json 2>/dev/null || true
-            exit 1
-          fi
-          mv "sbom-aarch64.spdx.json" "${{ matrix.name }}-aarch64.spdx.json"
-          rm -f sbom-index.spdx.json
-
-      - name: Resolve release tag
-        id: release_tag
-        shell: bash
+      - name: Push tested image candidate
+        if: github.event_name != 'pull_request'
         env:
           IMAGE_NAME: ${{ matrix.name }}
-          RELEASE_TAG_HINT: ${{ steps.publish_meta.outputs.release_tag }}
-          VERSION_SOURCE_PACKAGE: ${{ steps.publish_meta.outputs.version_source_package }}
-          VERSION_TRIM_PREFIX: ${{ steps.publish_meta.outputs.version_trim_prefix }}
-          VERSION_TRIM_SUFFIX: ${{ steps.publish_meta.outputs.version_trim_suffix }}
-        run: |
-          set -euo pipefail
-
-          release_tag="${RELEASE_TAG_HINT}"
-
-          if [ -z "$release_tag" ] && [ -n "$VERSION_SOURCE_PACKAGE" ]; then
-            version_from_sbom() {
-              local sbom="$1"
-              jq -r --arg pkg "$VERSION_SOURCE_PACKAGE" '
-                [.packages[]? | select(.name == $pkg) | .versionInfo // empty][0] // empty
-              ' "$sbom"
-            }
-
-            x86_sbom="${IMAGE_NAME}-x86_64.spdx.json"
-            arm_sbom="${IMAGE_NAME}-aarch64.spdx.json"
-            version_x86_64="$(version_from_sbom "$x86_sbom")"
-            version_aarch64="$(version_from_sbom "$arm_sbom")"
-
-            if [ -z "$version_x86_64" ]; then
-              echo "::error::Package '$VERSION_SOURCE_PACKAGE' not found in $x86_sbom"
-              exit 1
-            fi
-
-            if [ -z "$version_aarch64" ]; then
-              echo "::error::Package '$VERSION_SOURCE_PACKAGE' not found in $arm_sbom"
-              exit 1
-            fi
-
-            if [ "$version_x86_64" != "$version_aarch64" ]; then
-              echo "::error::Package '$VERSION_SOURCE_PACKAGE' resolved different versions across architectures: x86_64=$version_x86_64 aarch64=$version_aarch64"
-              exit 1
-            fi
-
-            release_tag="$version_x86_64"
-          fi
-
-          if [ -n "$VERSION_TRIM_PREFIX" ] && [[ "$release_tag" == "$VERSION_TRIM_PREFIX"* ]]; then
-            release_tag="${release_tag#"$VERSION_TRIM_PREFIX"}"
-          fi
-
-          if [ -n "$VERSION_TRIM_SUFFIX" ] && [[ "$release_tag" == *"$VERSION_TRIM_SUFFIX" ]]; then
-            release_tag="${release_tag%"$VERSION_TRIM_SUFFIX"}"
-          fi
-
-          if [ -z "$release_tag" ]; then
-            release_tag='latest'
-          fi
-
-          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve publish tags
-        id: publish_tags
-        shell: bash
+          ARCH: ${{ matrix.arch }}
+          REPOSITORY: ${{ steps.metadata.outputs.repository }}
+        run: .venv/bin/python -m scripts.release push "$IMAGE_NAME" "$ARCH"
+      - name: Add report provenance
+        if: ${{ !cancelled() && steps.metadata.outcome == 'success' && hashFiles(format('cve-report-{0}-{1}.json', matrix.name, matrix.arch)) != '' }}
         env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release_tag }}
-          PUBLISH_LATEST: ${{ steps.publish_meta.outputs.publish_latest }}
-        run: |
-          set -euo pipefail
-
-          declare -a tags=()
-
-          add_tag() {
-            local candidate="$1"
-            [ -n "$candidate" ] || return 0
-            local existing
-            for existing in "${tags[@]:-}"; do
-              if [ "$existing" = "$candidate" ]; then
-                return 0
-              fi
-            done
-            tags+=("$candidate")
-          }
-
-          add_tag "$RELEASE_TAG"
-
-          version_core="$RELEASE_TAG"
-          if [[ "$version_core" =~ ^(.+)-r[0-9]+$ ]]; then
-            version_core="${BASH_REMATCH[1]}"
-            add_tag "$version_core"
-          fi
-
-          truncated="$version_core"
-          while [[ "$truncated" == *.* ]]; do
-            truncated="${truncated%.*}"
-            add_tag "$truncated"
-          done
-
-          if [ "$PUBLISH_LATEST" = "true" ]; then
-            add_tag latest
-          fi
-
-          stream_tag=''
-          if [[ "$version_core" =~ ^([0-9]+)(\.|$) ]]; then
-            stream_tag="${BASH_REMATCH[1]}"
-          fi
-
-          published_tags=$(printf '%s\n' "${tags[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "published_tags=$published_tags" >> "$GITHUB_OUTPUT"
-          echo "stream_tag=$stream_tag" >> "$GITHUB_OUTPUT"
-
-      - name: Scan image (x86_64)
-        uses: ./.github/actions/scan-image
+          IMAGE_NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+        run: .venv/bin/python -m scripts.release report "$IMAGE_NAME" "$ARCH"
+      - name: Upload scan evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          image-tar: "${{ matrix.name }}-x86_64.tar"
-          image-name: ${{ matrix.name }}
-          arch: x86_64
-          repository: ${{ steps.publish_meta.outputs.repository }}
-          release-tag: ${{ steps.release_tag.outputs.release_tag }}
-          stream-tag: ${{ steps.publish_tags.outputs.stream_tag }}
-          published-tags-json: ${{ steps.publish_tags.outputs.published_tags }}
-          sbom-path: "${{ matrix.name }}-x86_64.spdx.json"
-
-      - name: Scan image (aarch64)
-        uses: ./.github/actions/scan-image
-        with:
-          image-tar: "${{ matrix.name }}-aarch64.tar"
-          image-name: ${{ matrix.name }}
-          arch: aarch64
-          repository: ${{ steps.publish_meta.outputs.repository }}
-          release-tag: ${{ steps.release_tag.outputs.release_tag }}
-          stream-tag: ${{ steps.publish_tags.outputs.stream_tag }}
-          published-tags-json: ${{ steps.publish_tags.outputs.published_tags }}
-          sbom-path: "${{ matrix.name }}-aarch64.spdx.json"
-
-      - name: Publish multi-arch image
+          name: cve-report-${{ matrix.name }}-${{ matrix.arch }}
+          path: |
+            cve-report-${{ matrix.name }}-${{ matrix.arch }}.json
+            grype-${{ matrix.name }}-${{ matrix.arch }}.sarif
+            trivy-${{ matrix.name }}-${{ matrix.arch }}.sarif
+            out/${{ matrix.name }}-${{ matrix.arch }}.spdx.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload release candidate
         if: github.event_name != 'pull_request'
-        id: publish
-        uses: chainguard-images/actions/apko-publish@8e701b320e7efcb120a1115de26e9fe833f86390 # v1.0.38
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          apko-image: ${{ env.APKO_IMAGE }}
-          config: ${{ matrix.name }}/apko.yaml
-          tag: ${{ env.REGISTRY_NAMESPACE }}/${{ steps.publish_meta.outputs.repository }}:${{ steps.release_tag.outputs.release_tag }}
-          keyring-append: ./melange.rsa.pub
-          repository-append: ./packages
-          archs: x86_64,aarch64
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: image-${{ matrix.name }}-${{ matrix.arch }}
+          path: .artifacts/release-${{ matrix.name }}-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Publish tag aliases
-        if: github.event_name != 'pull_request'
+  publish-images:
+    needs: [discover, build-images]
+    if: >-
+      !cancelled() && github.event_name != 'pull_request'
+      && needs.discover.result == 'success' && needs.discover.outputs.apko_images != '[]'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJson(needs.discover.outputs.apko_images) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install_args: just python
+      - run: just setup
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download candidates for this image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-${{ matrix.name }}-*
+          path: .artifacts
+          merge-multiple: true
+      - name: Assemble, sign and promote tested digests
         env:
-          REPOSITORY: ${{ steps.publish_meta.outputs.repository }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.release_tag }}
-          PUBLISHED_TAGS: ${{ steps.publish_tags.outputs.published_tags }}
-          PUBLISH_DIGEST: ${{ steps.publish.outputs.digest }}
-        run: |
-          set -euo pipefail
-
-          digest="${PUBLISH_DIGEST##*@}"
-          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::Unexpected published digest: $PUBLISH_DIGEST"
-            exit 1
-          fi
-
-          source_ref="${{ env.REGISTRY_NAMESPACE }}/${REPOSITORY}@${digest}"
-          for tag in $(jq -r '.[]' <<<"$PUBLISHED_TAGS"); do
-            if [ "$tag" = "$RELEASE_TAG" ]; then
-              continue
-            fi
-            docker buildx imagetools create \
-              -t "${{ env.REGISTRY_NAMESPACE }}/${REPOSITORY}:${tag}" \
-              "$source_ref"
-          done
-
-          if [ "$RELEASE_TAG" != "latest" ]; then
-            digest_hex="${digest#sha256:}"
-            immutable_tag="${RELEASE_TAG}-${digest_hex:0:12}"
-            immutable_ref="${{ env.REGISTRY_NAMESPACE }}/${REPOSITORY}:${immutable_tag}"
-
-            if docker buildx imagetools inspect "$immutable_ref" >/dev/null 2>&1; then
-              existing_digest="$(
-                docker buildx imagetools inspect \
-                  --format '{{json .Manifest}}' "$immutable_ref" | jq -r '.digest'
-              )"
-              if [ "$existing_digest" != "$digest" ]; then
-                echo "::error::Immutable tag $immutable_tag already points to $existing_digest, expected $digest"
-                exit 1
-              fi
-              echo "Immutable tag already points to $digest: $immutable_tag"
-            else
-              docker buildx imagetools create \
-                -t "$immutable_ref" \
-                "$source_ref"
-            fi
-          fi
-
-      - name: Sign image with cosign
-        if: github.event_name != 'pull_request'
-        env:
-          REPOSITORY: ${{ steps.publish_meta.outputs.repository }}
-        run: |
-          set -euo pipefail
-          digest="${{ steps.publish.outputs.digest }}"
-          digest="${digest##*@}"
-          cosign sign \
-            --yes \
-            "${{ env.REGISTRY_NAMESPACE }}/${REPOSITORY}@${digest}"
+          IMAGE_NAME: ${{ matrix.name }}
+        run: .venv/bin/python -m scripts.release publish "$IMAGE_NAME"
+      - name: Upload published digest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.name }}
+          path: .artifacts/published-${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 90
 
   ##############################################################################
   # SUMMARY                                                                    #
@@ -794,96 +393,35 @@ jobs:
         melange-build-base,
         melange-build-deps-tier-1,
         melange-build-deps-tier-2,
-        melange-build-deps-tier-3,
-        melange-build-deps-tier-4,
-        melange-build-deps-tier-5,
         build-images,
+        publish-images,
+        keygen,
       ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: always()
     permissions: {}
     steps:
       - name: Check results
-        run: |
-          DISCOVER="${{ needs.discover.result }}"
-          BASE="${{ needs.melange-build-base.result }}"
-          DEPS_TIER_1="${{ needs.melange-build-deps-tier-1.result }}"
-          DEPS_TIER_2="${{ needs.melange-build-deps-tier-2.result }}"
-          DEPS_TIER_3="${{ needs.melange-build-deps-tier-3.result }}"
-          DEPS_TIER_4="${{ needs.melange-build-deps-tier-4.result }}"
-          DEPS_TIER_5="${{ needs.melange-build-deps-tier-5.result }}"
-          BUILD_IMAGES="${{ needs.build-images.result }}"
-          echo "discover: $DISCOVER"
-          echo "melange-build-base: $BASE"
-          echo "melange-build-deps-tier-1: $DEPS_TIER_1"
-          echo "melange-build-deps-tier-2: $DEPS_TIER_2"
-          echo "melange-build-deps-tier-3: $DEPS_TIER_3"
-          echo "melange-build-deps-tier-4: $DEPS_TIER_4"
-          echo "melange-build-deps-tier-5: $DEPS_TIER_5"
-          echo "build-images: $BUILD_IMAGES"
-
-          if [[ "$DISCOVER" != "success" ]]; then
-            echo "::error::Discover did not succeed"
-            exit 1
-          fi
-
-          if [[ "$BASE" != "success" && "$BASE" != "skipped" ]]; then
-            echo "::error::Base package build did not succeed"
-            exit 1
-          fi
-
-          if [[ "$DEPS_TIER_1" != "success" && "$DEPS_TIER_1" != "skipped" ]]; then
-            echo "::error::Dependent package build tier 1 did not succeed"
-            exit 1
-          fi
-
-          if [[ "$DEPS_TIER_2" != "success" && "$DEPS_TIER_2" != "skipped" ]]; then
-            echo "::error::Dependent package build tier 2 did not succeed"
-            exit 1
-          fi
-
-          if [[ "$DEPS_TIER_3" != "success" && "$DEPS_TIER_3" != "skipped" ]]; then
-            echo "::error::Dependent package build tier 3 did not succeed"
-            exit 1
-          fi
-
-          if [[ "$DEPS_TIER_4" != "success" && "$DEPS_TIER_4" != "skipped" ]]; then
-            echo "::error::Dependent package build tier 4 did not succeed"
-            exit 1
-          fi
-
-          if [[ "$DEPS_TIER_5" != "success" && "$DEPS_TIER_5" != "skipped" ]]; then
-            echo "::error::Dependent package build tier 5 did not succeed"
-            exit 1
-          fi
-
-          if [[ "$BUILD_IMAGES" != "success" && "$BUILD_IMAGES" != "skipped" ]]; then
-            echo "::error::Image build/scan/publish did not succeed"
-            exit 1
-          fi
-
-  ##############################################################################
-  # CLEANUP OLD VERSIONS                                                       #
-  ##############################################################################
-  cleanup:
-    needs: [build-images]
-    runs-on: ubuntu-latest
-    if: always() && github.event_name != 'pull_request'
-    permissions:
-      packages: write
-    steps:
-      - name: Delete old untagged versions
-        run: |
-          gh api "/orgs/${{ github.repository_owner }}/packages?package_type=container" \
-            --paginate --jq '.[].name' 2>/dev/null | \
-          while read -r pkg; do
-            echo "Cleaning old versions from $pkg..."
-            gh api "/orgs/${{ github.repository_owner }}/packages/container/$pkg/versions" \
-              --paginate --jq '[.[] | select(.metadata.container.tags | length == 0)] | sort_by(.created_at) | reverse | .[4:] | .[].id' 2>/dev/null | \
-            while read -r id; do
-              echo "  Deleting version $id"
-              gh api --method DELETE "/orgs/${{ github.repository_owner }}/packages/container/$pkg/versions/$id" 2>/dev/null || true
-            done
-          done
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          {
+            echo '| Job | Result |'
+            echo '| --- | --- |'
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<<"$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ["RESULTS"])
+          assert results["discover"]["result"] == "success", "Discovery failed"
+          for name, job in results.items():
+              assert job["result"] in {"success", "skipped"}, f"{name}: {job["result"]}"
+          outputs = results["discover"]["outputs"]
+          for key in ["base_packages", *[f"deps_tier_{i}" for i in range(1, 3)], "apko_images"]:
+              job = "melange-build-base" if key == "base_packages" else "build-images" if key == "apko_images" else "melange-build-deps-tier-" + key.rsplit("_", 1)[1]
+              if json.loads(outputs[key]):
+                  assert results[job]["result"] == "success", f"Expected {job} was skipped"
+          if json.loads(outputs["apko_images"]) and os.environ["GITHUB_EVENT_NAME"] != "pull_request":
+              assert results["publish-images"]["result"] == "success", "Publication was skipped"
+          PY

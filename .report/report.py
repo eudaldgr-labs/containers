@@ -30,12 +30,12 @@ for rpath in reports:
             data = json.load(f)
         if not isinstance(data.get("matches"), list):
             raise ValueError("Missing Grype matches array")
-        vegops = data.get("vegops", {})
-        source_image = vegops.get("sourceImage", name)
-        repository = vegops.get("repository", source_image)
-        release_tag = vegops.get("releaseTag")
-        stream_tag = vegops.get("streamTag")
-        published_tags = vegops.get("publishedTags", [])
+        provenance = data.get("provenance") or data.get("vegops", {})
+        source_image = provenance.get("sourceImage", name)
+        repository = provenance.get("repository", source_image)
+        release_tag = provenance.get("releaseTag")
+        stream_tag = provenance.get("streamTag")
+        published_tags = provenance.get("publishedTags", [])
         app_key = f"{repository}:{release_tag}" if release_tag else repository
 
         if app_key not in apps:

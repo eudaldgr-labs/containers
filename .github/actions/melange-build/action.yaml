@@ -1,6 +1,5 @@
 name: Melange build
-description: Build, test and upload a melange package
-
+description: Build and test with the same pinned tools as local Just recipes
 inputs:
   package-name:
     description: Package directory name
@@ -8,96 +7,67 @@ inputs:
   arch:
     description: Target architecture
     required: true
-  has-dependencies:
-    description: Whether the package needs locally built dependencies
-    required: false
-    default: "false"
   event-name:
     description: Workflow event name
     required: true
   signing-key-secret:
     description: Private signing key for protected branches
-    required: false
     default: ""
   signing-key-pub-secret:
     description: Public signing key for protected branches
-    required: false
     default: ""
-  melange-version:
-    description: melange version to install
-    required: true
-
 runs:
   using: composite
   steps:
-    - name: Install melange
-      uses: chainguard-dev/actions/setup-melange@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
-      with:
-        version: ${{ inputs.melange-version }}
-
-    - name: Download ephemeral signing key (PR)
-      if: ${{ inputs.event-name == 'pull_request' }}
+    - name: Install helper dependencies
+      shell: bash
+      run: just setup
+    - name: Download ephemeral signing key
+      if: inputs.event-name == 'pull_request'
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: melange-ephemeral-key
-        path: .
-
-    - name: Setup signing key (protected branch)
-      if: ${{ inputs.event-name != 'pull_request' }}
+    - name: Setup signing key
+      if: inputs.event-name != 'pull_request'
       shell: bash
+      env:
+        PRIVATE_KEY: ${{ inputs.signing-key-secret }}
+        PUBLIC_KEY: ${{ inputs.signing-key-pub-secret }}
       run: |
         set -euo pipefail
-        printf '%s\n' "${{ inputs.signing-key-secret }}" > melange.rsa
-        printf '%s\n' "${{ inputs.signing-key-pub-secret }}" > melange.rsa.pub
+        test -n "$PRIVATE_KEY" && test -n "$PUBLIC_KEY"
+        printf '%s\n' "$PRIVATE_KEY" > melange.rsa
+        printf '%s\n' "$PUBLIC_KEY" > melange.rsa.pub
         chmod 600 melange.rsa
-
-    - name: Download base packages (same arch)
-      if: ${{ inputs.has-dependencies == 'true' }}
-      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-      with:
-        pattern: packages-*-${{ inputs.arch }}
-        merge-multiple: true
-        path: .
-
-    - name: Re-index local packages
-      if: ${{ inputs.has-dependencies == 'true' }}
+    - name: Download required packages and rebuild index
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PACKAGE: ${{ inputs.package-name }}
+        ARCH: ${{ inputs.arch }}
       run: |
         set -euo pipefail
         chmod 600 melange.rsa
-        if [ -d "packages/${{ inputs.arch }}" ] && compgen -G "packages/${{ inputs.arch }}/*.apk" > /dev/null; then
-          melange index --signing-key melange.rsa -o "packages/${{ inputs.arch }}/APKINDEX.tar.gz" "packages/${{ inputs.arch }}"/*.apk
-        fi
-
-    - name: Build package with melange
-      uses: chainguard-dev/actions/melange-build-pkg@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
-      with:
-        config: melange.yaml
-        archs: ${{ inputs.arch }}
-        sign-with-key: true
-        signing-key-path: ${{ github.workspace }}/melange.rsa
-        repository-path: ${{ github.workspace }}/packages
-        repository-append: ${{ github.workspace }}/packages
-        keyring-append: ${{ github.workspace }}/melange.rsa.pub
-        pipeline-dir: ${{ github.workspace }}/.pipelines
-        source-dir: ${{ github.workspace }}/${{ inputs.package-name }}
-        workdir: ${{ inputs.package-name }}
-
-    - name: Run smoke tests
+        .venv/bin/python -m scripts.packages download "$PACKAGE" melange "$ARCH"
+        just index "$ARCH"
+    - name: Build and test package
       shell: bash
+      env:
+        PACKAGE: ${{ inputs.package-name }}
+        ARCH: ${{ inputs.arch }}
       run: |
-        set -euo pipefail
-        sudo melange test "${{ inputs.package-name }}/melange.yaml" \
-          --arch "${{ inputs.arch }}" \
-          --repository-append ./packages \
-          --keyring-append ./melange.rsa.pub \
-          --pipeline-dirs "${{ github.workspace }}/.pipelines"
-
+        just melange "$PACKAGE" "$ARCH"
+        just melangecheck "$PACKAGE" "$ARCH"
+    - name: Stage own APKs
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package-name }}
+        ARCH: ${{ inputs.arch }}
+      run: .venv/bin/python -m scripts.packages stage "$PACKAGE" "$ARCH"
     - name: Upload packages
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: packages-${{ inputs.package-name }}-${{ inputs.arch }}
-        path: |
-          packages/
-          melange.rsa.pub
+        path: .artifacts/
+        if-no-files-found: error
         retention-days: 1
