@@ -35,8 +35,8 @@ pipeline:
       printf '%s\n' master > "${{targets.destdir}}/opt/tautulli/branch.txt"
       printf '%s\n' "v${{package.version}}" > "${{targets.destdir}}/opt/tautulli/version.txt"
 
-  - uses: vegops/rootfs
-  # - uses: vegops/prune
+  - uses: eudaldgr-labs/rootfs
+  # - uses: eudaldgr-labs/prune
 
 update:
   enabled: true

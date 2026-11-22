@@ -77,7 +77,7 @@ pipeline:
 
       rm -rf /home/build/.home package
 
-  - uses: vegops/prune
+  - uses: eudaldgr-labs/prune
     with:
       paths: /opt/seerr
       remove-empty-directories: "true"

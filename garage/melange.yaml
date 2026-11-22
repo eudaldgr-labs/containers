@@ -31,7 +31,7 @@ pipeline:
         --locked \
         --bin garage
 
-  - uses: vegops/rootfs
+  - uses: eudaldgr-labs/rootfs
 
   - uses: dotnet/entrypoint
 

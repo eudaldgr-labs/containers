@@ -58,7 +58,7 @@ pipeline:
         ar p ../plex.deb data.tar.xz | tar -xJf -
       )
 
-  - uses: vegops/rootfs
+  - uses: eudaldgr-labs/rootfs
 
   - runs: |
       # Create a symlink for easier execution of the Plex Media Server binary

@@ -35,7 +35,7 @@ pipeline:
         -X github.com/prometheus/common/version.Version=${{package.version}}
         -X github.com/prometheus/common/version.Branch=HEAD
         -X github.com/prometheus/common/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        -X github.com/prometheus/common/version.BuildUser=vegops
+        -X github.com/prometheus/common/version.BuildUser=eudaldgr-labs
 
   - uses: go/build
     with:
@@ -45,7 +45,7 @@ pipeline:
       ldflags: >-
         -X github.com/prometheus/common/version.Version=${{package.version}}
 
-  - uses: vegops/rootfs
+  - uses: eudaldgr-labs/rootfs
 
   - uses: dotnet/entrypoint
 

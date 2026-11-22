@@ -102,7 +102,7 @@ pipeline:
       mkdir -p rootfs/qbittorrent/themes
       unzip -q vuetorrent.zip -d rootfs/qbittorrent/themes
 
-  - uses: vegops/rootfs
+  - uses: eudaldgr-labs/rootfs
 
   - name: Install symlinks
     runs: |

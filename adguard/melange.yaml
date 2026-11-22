@@ -58,7 +58,7 @@ pipeline:
       mkdir -p "${{targets.destdir}}/usr/bin"
       cp -a dist/AdGuardHome_linux_*/AdGuardHome/AdGuardHome "${{targets.destdir}}/usr/bin/AdGuardHome"
 
-  - uses: vegops/rootfs
+  - uses: eudaldgr-labs/rootfs
 
   - uses: dotnet/entrypoint
 
