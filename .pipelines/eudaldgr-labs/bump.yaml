@@ -1,0 +1,67 @@
+name: Apply committed dependency security bumps with omnibump
+
+# `deps` is written by `just remediate <recipe>` and reviewed in a pull request; builds never
+# resolve fixes on their own. Each line is `name@version`, split on its last `@`: for js the
+# name may carry a version selector (`lodash@4.17.20@4.17.21`) so other installed versions
+# keep their own resolution. omnibump treats every pin as a floor and skips one the lockfile
+# already satisfies, so pins that a newer upstream release made obsolete are harmless.
+
+needs:
+  packages:
+    - busybox
+    - omnibump=0.23.5-r0
+
+inputs:
+  language:
+    description: Dependency ecosystem (go, rust or js).
+    required: true
+  deps:
+    description: Newline-separated `name@version` pins; empty applies nothing.
+    default: ""
+  modroot:
+    description: Project root, relative to the source directory.
+    default: .
+  policy:
+    description: Largest update the planner may propose (patch or minor). Not used at build time.
+    default: patch
+
+pipeline:
+  - runs: |
+      set -eu
+      deps_file="$(mktemp -u)"
+      trap 'rm -f "${deps_file}.txt" "${deps_file}.json"' EXIT
+      cat > "${deps_file}.txt" <<'DEPS'
+      ${{inputs.deps}}
+      DEPS
+      awk '
+        BEGIN { printf "{\"packages\":["; n = 0 }
+        { gsub(/^[ \t]+|[ \t]+$/, "") }
+        /^$/ { next }
+        {
+          i = match($0, /@[^@]*$/)
+          if (i <= 1 || RLENGTH < 2) { print "invalid pin: " $0 > "/dev/stderr"; exit 2 }
+          printf "%s{\"name\":\"%s\",\"version\":\"%s\"}", (n++ ? "," : ""), substr($0, 1, i - 1), substr($0, i + 1)
+        }
+        END { printf "]}\n" }
+      ' "${deps_file}.txt" > "${deps_file}.json"
+      if grep -q '"packages":\[\]' "${deps_file}.json"; then
+        echo "No dependency bumps for ${{package.name}}"
+        exit 0
+      fi
+      cd "${{inputs.modroot}}"
+      case "${{inputs.language}}" in
+        go)
+          omnibump --language go --deps "${deps_file}.json" --tidy
+          ;;
+        rust)
+          omnibump --language rust --deps "${deps_file}.json" --fail-on-unapplied-pins
+          ;;
+        js)
+          omnibump --language js --manager pnpm --deps "${deps_file}.json"
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          ;;
+        *)
+          echo "Unsupported bump language: ${{inputs.language}}" >&2
+          exit 1
+          ;;
+      esac

@@ -67,6 +67,20 @@ melange name='all' arch=env('ARCH', 'aarch64'):
       --keyring-append "/work/$KEYRING" --pipeline-dir /work/.pipelines --out-dir "/work/$PACKAGES_DIR"
     just index "$2"
 
+# Propose security pins for <name> in Melange and write them into its bump step.
+remediate name arch=env('ARCH', 'x86_64'):
+    context=$("$PYTHON" -m scripts.remediate prepare-plan "$1" "$2")
+    rm -rf "out/remediation/$1/packages"
+    just _melange build "$context/plan.yaml" --arch "$2" --source-dir "$context" \
+      --pipeline-dir /work/.pipelines --out-dir "/work/out/remediation/$1/packages"
+    "$PYTHON" -m scripts.remediate extract "$1" "$2"
+    "$PYTHON" -m scripts.remediate write "$1"
+
+# Re-plan security pins for every opted-in recipe this branch changed.
+regenerate arch=env('ARCH', 'x86_64'):
+    names=$("$PYTHON" -m scripts.remediate opted --changed | "$PYTHON" -c 'import json, sys; print(" ".join(json.load(sys.stdin)))')
+    for name in $names; do just remediate "$name" "$1"; done
+
 index arch=env('ARCH', 'aarch64'):
     arch="$1"
     shopt -s nullglob

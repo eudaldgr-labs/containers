@@ -1,0 +1,52 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Renovate Regenerate
+
+# When Renovate updates a recipe that carries security pins, re-plan them for the new
+# upstream release: obsolete pins are dropped and newly needed ones are added. The commit
+# comes from the GitHub App, whose email must be listed in gitIgnoredAuthors of the org preset (eudaldgr-labs/.github).
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    if: >-
+      ${{ github.event.pull_request.user.login == 'renovate[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.collect.outputs.changed }}
+    steps:
+      - id: collect
+        uses: eudaldgr-labs/.github/actions/pr-regenerate@105a3ffd82d51f2bfed42583eb24f77b18eac44e # pr-regenerate-v1.0.0
+        with:
+          run: just setup && just regenerate x86_64
+          paths: |
+            */melange.yaml
+
+  push:
+    needs: regenerate
+    if: ${{ needs.regenerate.outputs.changed == 'true' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: eudaldgr-labs/.github/actions/pr-regenerate/push@105a3ffd82d51f2bfed42583eb24f77b18eac44e # pr-regenerate-v1.0.0
+        with:
+          client-id: ${{ secrets.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          paths: |
+            */melange.yaml
+          commit-message: "fix(deps): refresh security pins for the new release"

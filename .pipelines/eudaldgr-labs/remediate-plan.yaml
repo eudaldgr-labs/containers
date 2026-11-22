@@ -1,0 +1,26 @@
+name: Propose dependency security bumps for a recipe
+
+# Used only by `just remediate`, never by package builds. The planner recipe stops at the
+# recipe's `eudaldgr-labs/bump` step and replaces it with this one, so it sees the pristine
+# upstream manifests after the same source preparation as the real build.
+
+needs:
+  packages:
+    - python-3.14
+    - osv-scanner=2.7.0-r3
+    - omnibump=0.23.5-r0
+
+inputs:
+  language:
+    description: Dependency ecosystem (go, rust or js).
+    required: true
+  modroot:
+    description: Project root, relative to the source directory.
+    default: .
+  policy:
+    description: Largest permitted stable update (patch or minor; 0.x stays on its minor).
+    default: patch
+
+pipeline:
+  - runs: |
+      python3 .remediation/engine.py plan --language "${{inputs.language}}" --policy "${{inputs.policy}}" --modroot "${{inputs.modroot}}"
