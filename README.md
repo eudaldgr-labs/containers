@@ -159,5 +159,5 @@ Their work in containerization, homelabs, and simplicity has strongly influenced
 ---
 
 <p align="center">
-  Released under the <a href="LICENSE">MIT License</a>.
+  Released under the <a href="LICENSE">Apache License 2.0</a>.
 </p>
