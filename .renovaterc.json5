@@ -16,10 +16,15 @@
       customType: "regex",
       description: "Update Melange package.version and reset epoch",
       managerFilePatterns: ["/(^|/)melange\\.yaml$/"],
+      // Recursive: the first string reads the annotation, the second narrows the match to
+      // the version and epoch lines. Only that narrowed match is replaced, so the template
+      // never rewrites the annotation from the resolved extractVersion and versioning.
+      matchStringsStrategy: "recursive",
       matchStrings: [
-        "(?<indentation>[ \\t]+)# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?\\r?\\n[ \\t]+version:[ \\t]*[\"\\']?(?<currentValue>[^\\s#\\n\"\\']+)[\"\\']?[ \\t]*\\r?\\n[ \\t]+epoch:[ \\t]*\\d+",
+        "[ \\t]+# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?\\r?\\n[ \\t]+version:[^\\n]*\\n[ \\t]+epoch:[ \\t]*\\d+",
+        "(?<indentation>[ \\t]+)version:[ \\t]*[\"']?(?<currentValue>[^\\s#\"']+)[\"']?[ \\t]*\\r?\\n[ \\t]+epoch:[ \\t]*\\d+",
       ],
-      autoReplaceStringTemplate: '{{{indentation}}}# renovate: datasource={{{datasource}}} depName={{{depName}}}{{#if registryUrls}} registryUrl={{{registryUrls.[0]}}}{{/if}}{{#if extractVersion}} extractVersion={{{extractVersion}}}{{/if}}{{#if versioning}} versioning={{{versioning}}}{{/if}}\n{{{indentation}}}version: {{#if (equals depName "bitcoinknots/bitcoin")}}{{{replace "[.]knots" "." newValue}}}{{else}}{{#if (equals depName "miniupnp/miniupnp")}}{{{replace "_" "." (replace "^miniupnpc_" "" newValue)}}}{{else}}{{#if (equals depName "lightningnetwork/lnd")}}{{{replace "-" "_" newValue}}}{{else}}{{{newValue}}}{{/if}}{{/if}}{{/if}}\n{{{indentation}}}epoch: 0',
+      autoReplaceStringTemplate: '{{{indentation}}}version: {{#if (equals depName "bitcoinknots/bitcoin")}}{{{replace "[.]knots" "." newValue}}}{{else}}{{#if (equals depName "miniupnp/miniupnp")}}{{{replace "_" "." (replace "^miniupnpc_" "" newValue)}}}{{else}}{{#if (equals depName "lightningnetwork/lnd")}}{{{replace "-" "_" newValue}}}{{else}}{{{newValue}}}{{/if}}{{/if}}{{/if}}\n{{{indentation}}}epoch: 0',
       depTypeTemplate: "melange-package-version",
       currentValueTemplate: '{{#if (equals depName "bitcoinknots/bitcoin")}}{{{replace "^([0-9]+)[.]([0-9]+)[.]([0-9]+)$" "$1.$2.knots$3" currentValue}}}{{else}}{{#if (equals depName "miniupnp/miniupnp")}}miniupnpc_{{{replace "[.]" "_" currentValue}}}{{else}}{{#if (equals depName "lightningnetwork/lnd")}}{{{replace "_" "-" currentValue}}}{{else}}{{{currentValue}}}{{/if}}{{/if}}{{/if}}',
     },
