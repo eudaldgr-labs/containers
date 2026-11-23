@@ -85,6 +85,9 @@ def records(report):
         for entry in source['packages']:
             package = entry['package']
             key = tuple(package.get(k, '') for k in ('ecosystem', 'name', 'version'))
+            if key[0] == 'Go' and key[1].startswith(('.', '/')) and not key[2] and not entry.get('vulnerabilities'):
+                # A `replace ... => ../path` target is a local module of the source tree, not a dependency.
+                continue
             if not all(key):
                 raise ValueError(f'Unversioned or unidentified dependency: {package}')
             vulnerabilities = result.setdefault(key, {})

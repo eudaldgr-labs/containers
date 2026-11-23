@@ -89,7 +89,11 @@ def report(name, arch):
     with open(f'out/{name}-{arch}.tar', 'rb') as archive:
         metadata['archiveSHA256'] = hashlib.file_digest(archive, 'sha256').hexdigest()
     data['provenance'] = metadata
-    path.write_text(json.dumps(data))
+    # Grype runs as root in a container, so the report it wrote is not writable here.
+    # Replacing it only needs write access to the directory.
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, path)
 
 
 def publish(name):
