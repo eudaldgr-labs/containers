@@ -1,8 +1,8 @@
 package:
   name: miniupnpc
   # renovate: datasource=github-tags depName=miniupnp/miniupnp
-  version: 2.3.3
-  epoch: 1
+  version: 2.3.5
+  epoch: 0
   description: Lightweight UPnP client library and tools
   copyright:
     - license: BSD-3-Clause
