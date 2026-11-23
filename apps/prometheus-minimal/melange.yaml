@@ -31,8 +31,7 @@ pipeline:
   - uses: eudaldgr-labs/bump
     with:
       language: go
-      deps: |-
-        github.com/klauspost/compress@v1.20.2
+      deps: ""
 
   - uses: go/build
     with:
