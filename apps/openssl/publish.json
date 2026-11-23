@@ -1,6 +1,5 @@
 {
   "repository": "openssl",
   "publishLatest": true,
-  "versionSourcePackage": "openssl",
-  "versionTrimPrefix": "openssl-"
+  "versionSourcePackage": "openssl-4.0"
 }

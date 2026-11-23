@@ -41,7 +41,11 @@ def prepare(name, arch):
         release = f"{package['version']}-r{package.get('epoch', 0)}"
     elif metadata.get('versionSourcePackage'):
         sbom = json.loads(Path(f'out/{name}-{arch}.spdx.json').read_text())
-        versions = {p['versionInfo'] for p in sbom['packages'] if p['name'] == metadata['versionSourcePackage']}
+        # Apko also lists each package's upstream source under the same name, so only the
+        # installed APK identifies the release.
+        versions = {p['versionInfo'] for p in sbom['packages']
+                    if p['name'] == metadata['versionSourcePackage']
+                    and any(ref.get('referenceLocator', '').startswith('pkg:apk/') for ref in p.get('externalRefs', []))}
         if len(versions) != 1:
             raise ValueError(f'Expected one SBOM version for {metadata["versionSourcePackage"]}: {versions}')
         release = versions.pop()
