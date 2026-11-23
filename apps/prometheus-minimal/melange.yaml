@@ -1,8 +1,8 @@
 package:
   name: prometheus-minimal
   # renovate: datasource=github-tags depName=prometheus/prometheus
-  version: 3.15.1
-  epoch: 1
+  version: 3.16.0
+  epoch: 0
   description: Minimal Prometheus monitoring server built from source
   copyright:
     - license: Apache-2.0
@@ -31,8 +31,7 @@ pipeline:
   - uses: eudaldgr-labs/bump
     with:
       language: go
-      deps: |-
-        github.com/klauspost/compress@v1.20.2
+      deps: ""
 
   - uses: go/build
     with:
