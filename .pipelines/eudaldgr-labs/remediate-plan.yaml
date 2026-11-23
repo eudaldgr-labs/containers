@@ -7,8 +7,8 @@ name: Propose dependency security bumps for a recipe
 needs:
   packages:
     - python-3.14
-    - osv-scanner=2.7.0-r3
-    - omnibump=0.23.5-r0
+    - osv-scanner=2.7.1-r2
+    - omnibump=0.23.7-r0
 
 inputs:
   language:

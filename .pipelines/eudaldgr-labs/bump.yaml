@@ -9,7 +9,7 @@ name: Apply committed dependency security bumps with omnibump
 needs:
   packages:
     - busybox
-    - omnibump=0.23.5-r0
+    - omnibump=0.23.7-r0
 
 inputs:
   language:
