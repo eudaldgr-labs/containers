@@ -2,7 +2,7 @@ package:
   name: seerr
   # renovate: datasource=github-releases depName=seerr-team/seerr
   version: 3.5.1
-  epoch: 2
+  epoch: 3
   description: Media request manager for Jellyfin, Plex, Emby, Radarr, and Sonarr
   copyright:
     - license: MIT
@@ -12,6 +12,9 @@ package:
 environment:
   environment:
     NEXT_TELEMETRY_DISABLED: "1"
+    # Build native addons against the installed Node headers. node-gyp cannot extract
+    # downloaded headers in the build sandbox (fchown EPERM).
+    npm_config_nodedir: /usr
   contents:
     repositories:
       - &wolfi-repository https://packages.wolfi.dev/os
@@ -22,6 +25,7 @@ environment:
       - build-base
       - busybox
       - ca-certificates-bundle
+      - libuv-dev
       - node-gyp
       - nodejs-22
       - npm
