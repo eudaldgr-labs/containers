@@ -1,7 +1,7 @@
 package:
   name: rocksdb-11
   # renovate: datasource=github-tags depName=facebook/rocksdb
-  version: 11.12
+  version: 11.13.2
   epoch: 0
   description: RocksDB static library
   copyright:
