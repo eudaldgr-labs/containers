@@ -2,7 +2,7 @@ package:
   # Wolfi's versioned Valkey packages provide "valkey"; keep this APK distinct.
   name: eudaldgr-labs-valkey
   # renovate: datasource=github-tags depName=valkey-io/valkey
-  version: 9.1.0
+  version: 9.2.0
   epoch: 0
   description: Valkey in-memory data store
   copyright:
