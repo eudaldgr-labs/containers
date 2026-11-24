@@ -44,9 +44,11 @@ pipeline:
         --prod \
         --frozen-lockfile
 
+  # better-sqlite3 12 fetches or builds its binary in an install script; 13 ships
+  # prebuilds in the npm package and has no install script.
   - working-directory: package/node_modules/better-sqlite3
     runs: |
-      npm run install
+      npm run install --if-present
 
   - runs: |
       mkdir -p "${{targets.destdir}}/opt/ghost"
