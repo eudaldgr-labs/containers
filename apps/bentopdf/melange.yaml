@@ -34,9 +34,23 @@ pipeline:
       repository: https://github.com/alam00000/bentopdf
       tag: v${{package.version}}
 
-  - uses: patch
-    with:
-      patches: nonroot.patch
+  # Serve from the package paths as nonroot. Rewritten in place rather than patched, so
+  # upstream edits elsewhere in nginx.conf do not break the build; the checks fail if a
+  # pattern stops matching.
+  - runs: |
+      sed -i \
+        -e 's#^pid /etc/nginx/tmp/nginx\.pid;$#pid /bentopdf/run/nginx.pid;\nerror_log /dev/stderr warn;#' \
+        -e 's#^    default_type application/octet-stream;$#&\n\n    client_body_temp_path /bentopdf/cache/client_body;\n    fastcgi_temp_path /bentopdf/cache/fastcgi;\n    proxy_temp_path /bentopdf/cache/proxy;\n    scgi_temp_path /bentopdf/cache/scgi;\n    uwsgi_temp_path /bentopdf/cache/uwsgi;#' \
+        -e 's#^\( *\)root /usr/share/nginx/html;$#\1root /usr/share/bentopdf/html;#' \
+        -e 's#^\( *\)absolute_redirect off;$#&\n\1access_log /dev/stdout;#' \
+        -e 's#include /etc/nginx/security-headers#include /usr/share/bentopdf/security-headers#' \
+        nginx.conf
+
+      test "$(grep -c '^pid /bentopdf/run/nginx.pid;$' nginx.conf)" = 1
+      test "$(grep -c '_temp_path /bentopdf/cache/' nginx.conf)" = 5
+      test "$(grep -c 'root /usr/share/bentopdf/html;' nginx.conf)" = 1
+      test "$(grep -c 'access_log /dev/stdout;' nginx.conf)" = 1
+      if grep -nE '/usr/share/nginx|/etc/nginx/security-headers|/etc/nginx/tmp/nginx' nginx.conf; then exit 1; fi
 
   - environment:
       HOME: /home/build/.home
