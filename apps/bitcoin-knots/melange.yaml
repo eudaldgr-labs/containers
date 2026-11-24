@@ -1,8 +1,8 @@
 package:
   name: bitcoin-knots
   # renovate: datasource=github-tags depName=bitcoinknots/bitcoin
-  version: 29.3.20260210
-  epoch: 7
+  version: 29.5.20260508
+  epoch: 0
   description: Bitcoin Knots daemon
   copyright:
     - license: MIT
@@ -52,11 +52,6 @@ pipeline:
       curl -s "https://api.github.com/repos/bitcoinknots/guix.sigs/contents/builder-keys" | jq -r '.[].download_url' | while read url; do curl -s "$url" | gpg --import; done
 
       git verify-tag "v${{vars.upstream-version}}" || true # Luke have expired keys
-
-  # Bitcoin Core 29.x backport: https://github.com/bitcoin/bitcoin/pull/35175
-  - uses: patch
-    with:
-      patches: boost-1.91.patch
 
   - uses: cmake/configure
     with:
