@@ -97,7 +97,7 @@ pipeline:
       cp -a \
         .next \
         dist \
-        next.config.ts \
+        next.config.* \
         package.json \
         public \
         seerr-api.yml \
