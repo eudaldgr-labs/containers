@@ -1,8 +1,8 @@
 package:
   name: ghost
   # renovate: datasource=npm depName=ghost
-  version: 6.73.0
-  epoch: 1
+  version: 6.78.0
+  epoch: 0
   description: Professional publishing platform
   copyright:
     - license: MIT
