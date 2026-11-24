@@ -53,11 +53,6 @@ pipeline:
 
       git verify-tag "v${{vars.upstream-version}}" || true # Luke have expired keys
 
-  # Bitcoin Core 29.x backport: https://github.com/bitcoin/bitcoin/pull/35175
-  - uses: patch
-    with:
-      patches: boost-1.91.patch
-
   - uses: cmake/configure
     with:
       opts: |
