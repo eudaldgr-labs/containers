@@ -37,12 +37,15 @@ pipeline:
       tag: v${{vars.upstream-version}}
 
   - runs: |
-      wget -qO roasbeef.asc "https://raw.githubusercontent.com/lightningnetwork/lnd/master/scripts/keys/roasbeef.asc"
+      # Release tags are signed by either maintainer.
+      for signer in roasbeef yyforyongyu; do
+        wget -qO "${signer}.asc" "https://raw.githubusercontent.com/lightningnetwork/lnd/master/scripts/keys/${signer}.asc"
+      done
 
       export GNUPGHOME="$(mktemp -d)"
       trap 'rm -rf "$GNUPGHOME"' EXIT
 
-      gpg --import roasbeef.asc
+      gpg --import roasbeef.asc yyforyongyu.asc
 
       git verify-tag "v${{vars.upstream-version}}"
 
