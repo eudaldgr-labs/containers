@@ -33,7 +33,7 @@ volumes:
 environment:
   NODE_ENV: production
   # renovate: datasource=github-releases depName=raydak-labs/configarr
-  CONFIGARR_VERSION: v1.39.2
+  CONFIGARR_VERSION: v1.40.0
 
 paths:
   - path: /configarr
